@@ -28,6 +28,11 @@ Initial scaffold for unified Bybit analytics platform with PostgreSQL as data co
 ## Quick start
 ```bash
 python main.py init-db
+python main.py sync-symbols --market-type linear
+python main.py load --symbols ALL --intervals 60
 python main.py scan --strategy grid --top 30
 python main.py levels --symbol BTCUSDT --interval 120
+python main.py analyze --symbol BTCUSDT --intervals 60 240
 ```
+
+`load --symbols ALL` берёт список инструментов из таблицы `symbols`, поэтому перед первой загрузкой обязательно выполните `sync-symbols` (иначе данные могут не загрузиться).
