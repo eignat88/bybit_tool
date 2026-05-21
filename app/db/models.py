@@ -73,9 +73,11 @@ class ScanResult(Base):
 
 class Level(Base):
     __tablename__ = "levels"
+    __table_args__ = (Index("ix_levels_symbol_market_type_interval", "symbol", "market_type", "interval"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(30), index=True)
+    market_type: Mapped[str] = mapped_column(String(10), default="linear", index=True)
     interval: Mapped[str] = mapped_column(String(10), index=True)
     level_price: Mapped[float] = mapped_column(Float)
     level_type: Mapped[str] = mapped_column(String(30), index=True)

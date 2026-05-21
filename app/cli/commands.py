@@ -226,11 +226,12 @@ def scan(
 def levels(
     symbol: str,
     interval: str = "120",
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
     export_csv: str = typer.Option("", "--export-csv", help="Path to save TradingView CSV."),
 ) -> None:
     calc = LevelsCalculator()
-    result = calc.calculate(symbol=symbol, interval=interval)
-    typer.echo(f"Levels calculated: {len(result)} for {symbol.upper()} @ {interval}")
+    result = calc.calculate(symbol=symbol, interval=interval, market_type=market_type)
+    typer.echo(f"Levels calculated: {len(result)} for {symbol.upper()} @ {interval} ({market_type})")
 
     by_source: dict[str, int] = {}
     by_type: dict[str, int] = {}
