@@ -30,3 +30,18 @@ def validate_compact_error() -> CheckResult:
     ok, out = _run([sys.executable, "main.py", "load", "--symbols", "BADUSDT", "--intervals", "60"])
     has_trace = "Traceback (most recent call last)" in out
     return CheckResult(name="compact error validation", ok=not has_trace, message="no traceback" if not has_trace else "traceback detected", details=[out[-500:]] if out else [])
+
+
+def validate_interval_consistency() -> CheckResult:
+    from app.core.intervals import INTERVAL_TO_MS, validate_intervals_csv
+
+    allowed_only = set(validate_intervals_csv(",".join(INTERVAL_TO_MS))) == set(INTERVAL_TO_MS)
+    invalid_rejected = False
+    try:
+        validate_intervals_csv("15,INVALID")
+    except ValueError:
+        invalid_rejected = True
+
+    ok = allowed_only and invalid_rejected
+    details = [f"allowed={sorted(INTERVAL_TO_MS)}", f"invalid_rejected={invalid_rejected}"]
+    return CheckResult(name="interval validation consistency", ok=ok, message="ok" if ok else "mismatch", details=details)

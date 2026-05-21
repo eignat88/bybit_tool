@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from app.core.bybit_client import BybitClient
 from app.core.levels_calculator import LevelsCalculator
+from app.core.intervals import validate_intervals_csv
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.db.models import Candle, Symbol
@@ -39,13 +40,10 @@ def load(
     market_type: str = typer.Option("linear", "--market-type"),
 ) -> None:
     started = time.perf_counter()
-    allowed_intervals = {"15", "60", "240", "D"}
-    interval_list = [i.strip().upper() for i in intervals.split(",") if i.strip()]
-    if not interval_list:
-        raise typer.BadParameter("intervals must not be empty")
-    unsupported = [x for x in interval_list if x not in allowed_intervals]
-    if unsupported:
-        raise typer.BadParameter(f"Unsupported intervals: {','.join(unsupported)}")
+    try:
+        interval_list = validate_intervals_csv(intervals)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     client = BybitClient()
     with SessionLocal() as db:
