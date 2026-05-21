@@ -1,0 +1,18 @@
+[project]
+name = "bybit-market-decision-system"
+version = "0.1.0"
+description = "Unified Bybit analytics platform: load, scan, levels, analyze"
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.12",
+  "sqlalchemy>=2.0",
+  "psycopg[binary]>=3.2",
+  "pydantic>=2.8",
+  "pydantic-settings>=2.3",
+]
+
+[project.scripts]
+bybit-tool = "main:app"
+
+[tool.ruff]
+line-length = 100
