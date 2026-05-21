@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.cli.commands import scheduler
 from app.testing.models import CheckResult
 
 
 def validate_scheduler_once() -> CheckResult:
+    from app.cli.commands import scheduler
+
     try:
         scheduler(symbols="BTCUSDT", once=True)
     except Exception as exc:  # noqa: BLE001
