@@ -13,6 +13,7 @@ from app.core.levels_calculator import LevelsCalculator
 from app.core.intervals import validate_intervals_csv
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
+from app.core.report_builder import build_analysis_report
 from app.db.models import Candle, Symbol
 from app.db.repository import SessionLocal, init_db
 
@@ -253,8 +254,24 @@ def levels(
 
 
 @app.command("analyze")
-def analyze(symbol: str, intervals: str = "D,H4,H1") -> None:
-    typer.echo(f"TODO deep analysis for {symbol} intervals={intervals}")
+def analyze(
+    symbol: str,
+    intervals: str = "D,H4,H1",
+    market_type: str = typer.Option("linear", "--market-type"),
+) -> None:
+    with SessionLocal() as db:
+        report, payload, markdown = build_analysis_report(
+            db=db,
+            client=BybitClient(),
+            symbol=symbol.upper(),
+            intervals=intervals,
+            market_type=market_type,
+        )
+
+    typer.echo(markdown)
+    typer.echo("")
+    typer.echo(f"report_id={report.id}")
+    typer.echo(f"timeframes={','.join(payload['timeframes'])}")
 
 
 @app.command("db-check")
