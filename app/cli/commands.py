@@ -221,10 +221,35 @@ def scan(
 
 
 @app.command("levels")
-def levels(symbol: str, interval: str = "120") -> None:
+def levels(
+    symbol: str,
+    interval: str = "120",
+    export_csv: str = typer.Option("", "--export-csv", help="Path to save TradingView CSV."),
+) -> None:
     calc = LevelsCalculator()
     result = calc.calculate(symbol=symbol, interval=interval)
-    typer.echo(f"Levels calculated: {len(result)} for {symbol} @ {interval}")
+    typer.echo(f"Levels calculated: {len(result)} for {symbol.upper()} @ {interval}")
+
+    by_source: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    for row in result:
+        by_source[row.source_type] = by_source.get(row.source_type, 0) + 1
+        by_type[row.level_type] = by_type.get(row.level_type, 0) + 1
+
+    if by_source:
+        typer.echo("By source_type:")
+        for key in sorted(by_source):
+            typer.echo(f"  {key}: {by_source[key]}")
+
+    if by_type:
+        typer.echo("By level_type:")
+        for key in sorted(by_type):
+            typer.echo(f"  {key}: {by_type[key]}")
+
+    if export_csv:
+        csv_body = calc.to_tradingview_csv(result)
+        Path(export_csv).write_text(csv_body + "\n", encoding="utf-8")
+        typer.echo(f"TradingView CSV exported to {export_csv}")
 
 
 @app.command("analyze")
