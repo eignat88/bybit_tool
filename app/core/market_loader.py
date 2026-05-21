@@ -151,8 +151,17 @@ class MarketLoader:
         )
 
     def sync_symbols(self, market_type: str = "linear") -> SyncSummary:
-        raw = self.client.get_symbols(market_type=market_type)
-        instruments = raw.get("result", {}).get("list", [])
+        instruments: list[dict] = []
+        next_cursor: str | None = None
+
+        while True:
+            raw = self.client.get_symbols(market_type=market_type, cursor=next_cursor)
+            result = raw.get("result", {})
+            instruments.extend(result.get("list", []))
+            next_cursor = result.get("nextPageCursor") or None
+            if not next_cursor:
+                break
+
         usdt_only = [row for row in instruments if row.get("quoteCoin") == "USDT"]
         symbols_total = len(usdt_only)
         inserted = 0
