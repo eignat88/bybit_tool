@@ -35,8 +35,28 @@ Initial scaffold for unified Bybit analytics platform with PostgreSQL as data co
   - `init-db` — для стандартного сценария запуска проекта через единый CLI.
   - `alembic upgrade head` — для прямого управления миграциями (например, в CI, отладке или ручном администрировании БД).
 
+## Local setup verification
+Before running database-dependent commands (for example `init-db`, `sync-symbols`, `load`), verify packaging in a clean virtual environment so metadata/configuration errors fail fast.
+
+```bash
+python -m venv .venv-packaging-check
+source .venv-packaging-check/bin/activate
+python -m pip install --upgrade pip
+pip install -e .
+```
+
+If `pip install -e .` succeeds, the project packaging metadata is valid and you can continue with DB setup.
+
 ## Quick start
 ```bash
+# 1) Fail fast on packaging issues in a clean environment
+python -m venv .venv-packaging-check
+source .venv-packaging-check/bin/activate
+python -m pip install --upgrade pip
+pip install -e .
+deactivate
+
+# 2) Then run database-dependent bootstrap commands
 python main.py init-db
 python main.py sync-symbols --market-type linear
 python main.py load --symbols ALL --intervals 60
