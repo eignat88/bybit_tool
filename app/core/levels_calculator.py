@@ -23,13 +23,13 @@ class LevelsCalculator:
     SWING_WINDOW = 2
     MAX_LEVELS_PER_SOURCE = 25
 
-    def calculate(self, symbol: str, interval: str) -> list[LevelResult]:
+    def calculate(self, symbol: str, interval: str, market_type: str = "linear") -> list[LevelResult]:
         symbol_u = symbol.upper()
         with SessionLocal() as db:
             candles = list(
                 db.execute(
                     select(Candle)
-                    .where(Candle.symbol == symbol_u, Candle.interval == interval)
+                    .where(Candle.symbol == symbol_u, Candle.interval == interval, Candle.market_type == market_type)
                     .order_by(Candle.open_time.desc())
                     .limit(self.LOOKBACK)
                 )
@@ -37,17 +37,30 @@ class LevelsCalculator:
             )
             candles.reverse()
             if len(candles) < 20:
-                db.execute(delete(Level).where(Level.symbol == symbol_u, Level.interval == interval))
+                db.execute(
+                    delete(Level).where(
+                        Level.symbol == symbol_u,
+                        Level.interval == interval,
+                        Level.market_type == market_type,
+                    )
+                )
                 db.commit()
                 return []
 
             results = self._detect_levels(candles)
 
-            db.execute(delete(Level).where(Level.symbol == symbol_u, Level.interval == interval))
+            db.execute(
+                delete(Level).where(
+                    Level.symbol == symbol_u,
+                    Level.interval == interval,
+                    Level.market_type == market_type,
+                )
+            )
             db.add_all(
                 [
                     Level(
                         symbol=symbol_u,
+                        market_type=market_type,
                         interval=interval,
                         level_price=row.level_price,
                         level_type=row.level_type,
