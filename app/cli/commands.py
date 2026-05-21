@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 
 import typer
@@ -12,6 +11,7 @@ from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.levels_calculator import LevelsCalculator
 from app.core.intervals import validate_intervals_csv
+from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.core.report_builder import build_analysis_report
@@ -183,14 +183,7 @@ def scheduler(
     logging.getLogger().addHandler(file_handler)
     typer.echo("Scheduler started")
     while True:
-        now = datetime.now(UTC)
-        intervals: list[str] = ["15"]
-        if now.minute == 0:
-            intervals.append("60")
-        if now.minute == 0 and now.hour % 4 == 0:
-            intervals.append("240")
-        if now.minute == 0 and now.hour == 0:
-            intervals.append("D")
+        intervals = get_scheduler_intervals()
         load(symbols=symbols, intervals=",".join(intervals))
         if once:
             break
