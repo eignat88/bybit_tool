@@ -32,6 +32,7 @@ INTERVAL_TO_MS = {
 class LoadSummary:
     symbol: str
     interval: str
+    rows_requested: int
     rows_inserted: int
     duplicates_skipped: int
 
@@ -71,7 +72,16 @@ class MarketLoader:
             )
         return sorted(rows, key=lambda x: x["open_time"])
 
+    def _count_candles(self, symbol: str, interval: str, market_type: str) -> int:
+        stmt: Select[tuple[int]] = select(func.count()).select_from(Candle).where(
+            Candle.symbol == symbol,
+            Candle.interval == interval,
+            Candle.market_type == market_type,
+        )
+        return self.db.execute(stmt).scalar_one()
+
     def load_candles(self, symbol: str, interval: str, market_type: str = "linear", limit: int = 1000) -> LoadSummary:
+        before_count = self._count_candles(symbol=symbol, interval=interval, market_type=market_type)
         latest = self._latest_open_time(symbol=symbol, interval=interval, market_type=market_type)
         start_ms = None
         if latest is not None:
@@ -89,9 +99,16 @@ class MarketLoader:
         )
         kline_rows = raw.get("result", {}).get("list", [])
         parsed = self._parse_klines(kline_rows, symbol, interval, market_type)
+        rows_requested = len(parsed)
 
         if not parsed:
-            return LoadSummary(symbol=symbol, interval=interval, rows_inserted=0, duplicates_skipped=0)
+            return LoadSummary(
+                symbol=symbol,
+                interval=interval,
+                rows_requested=0,
+                rows_inserted=0,
+                duplicates_skipped=0,
+            )
 
         stmt = insert(Candle).values(parsed)
         stmt = stmt.on_conflict_do_nothing(
@@ -101,9 +118,25 @@ class MarketLoader:
         self.db.commit()
 
         inserted = result.rowcount or 0
-        duplicates = len(parsed) - inserted
+        after_count = self._count_candles(symbol=symbol, interval=interval, market_type=market_type)
+        inserted_actual = max(after_count - before_count, 0)
+        duplicates = max(rows_requested - inserted_actual, 0)
         LOGGER.info(
             "Inserted candles",
-            extra={"symbol": symbol, "interval": interval, "inserted": inserted, "duplicates": duplicates},
+            extra={
+                "symbol": symbol,
+                "interval": interval,
+                "rows_requested": rows_requested,
+                "inserted_rowcount": inserted,
+                "inserted_actual": inserted_actual,
+                "duplicates": duplicates,
+                "rows_total": after_count,
+            },
         )
-        return LoadSummary(symbol=symbol, interval=interval, rows_inserted=inserted, duplicates_skipped=duplicates)
+        return LoadSummary(
+            symbol=symbol,
+            interval=interval,
+            rows_requested=rows_requested,
+            rows_inserted=inserted_actual,
+            duplicates_skipped=duplicates,
+        )
