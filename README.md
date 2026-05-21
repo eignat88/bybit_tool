@@ -22,8 +22,15 @@ Initial scaffold for unified Bybit analytics platform with PostgreSQL as data co
   - `BybitClient`, `MarketLoader`, `ValueScanner`, `LevelsCalculator`, `scoring`
 
 ## Migrations
-- `init-db` now runs Alembic migrations (`alembic upgrade head`).
-- Migration files are stored in `alembic/versions`.
+- `init-db` вызывает миграции Alembic через код (внутри запускается `alembic upgrade head`).
+- Миграции можно выполнить напрямую через Alembic CLI:
+  ```bash
+  alembic upgrade head
+  ```
+- Файлы ревизий лежат в `alembic/versions`.
+- Когда что использовать:
+  - `init-db` — для стандартного сценария запуска проекта через единый CLI.
+  - `alembic upgrade head` — для прямого управления миграциями (например, в CI, отладке или ручном администрировании БД).
 
 ## Quick start
 ```bash
