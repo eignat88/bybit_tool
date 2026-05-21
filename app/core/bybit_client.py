@@ -72,8 +72,11 @@ class BybitClient:
 
         raise BybitAPIError(f"Retries exhausted for endpoint={endpoint}")
 
-    def get_symbols(self, market_type: str = "linear") -> dict[str, Any]:
-        return self._request("/v5/market/instruments-info", {"category": market_type}).payload
+    def get_symbols(self, market_type: str = "linear", cursor: str | None = None) -> dict[str, Any]:
+        params: dict[str, Any] = {"category": market_type}
+        if cursor:
+            params["cursor"] = cursor
+        return self._request("/v5/market/instruments-info", params).payload
 
     def get_klines(
         self,
