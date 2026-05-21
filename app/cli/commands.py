@@ -261,14 +261,22 @@ def analyze(
     intervals: str = "D,H4,H1",
     market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
-    with SessionLocal() as db:
-        report, payload, markdown = build_analysis_report(
-            db=db,
-            client=BybitClient(),
-            symbol=symbol.upper(),
-            intervals=intervals,
-            market_type=market_type,
+    normalized_symbol = symbol.upper()
+    try:
+        with SessionLocal() as db:
+            report, payload, markdown = build_analysis_report(
+                db=db,
+                client=BybitClient(),
+                symbol=normalized_symbol,
+                intervals=intervals,
+                market_type=market_type,
+            )
+    except ValueError as exc:
+        typer.echo(
+            f"analyze failed for symbol={normalized_symbol} intervals={intervals}: {exc}",
+            err=True,
         )
+        raise typer.Exit(code=2) from exc
 
     typer.echo(markdown)
     typer.echo("")
