@@ -36,6 +36,7 @@ def init_db_command() -> None:
 def load(
     symbols: str = typer.Option("ALL", "--symbols"),
     intervals: str = typer.Option("60", "--intervals"),
+    market_type: str = typer.Option("linear", "--market-type"),
 ) -> None:
     started = time.perf_counter()
     allowed_intervals = {"15", "60", "240", "D"}
@@ -49,7 +50,12 @@ def load(
     client = BybitClient()
     with SessionLocal() as db:
         if symbols.strip().upper() == "ALL":
-            symbols_list = [s for (s,) in db.execute(select(Symbol.symbol).where(Symbol.quote_coin == "USDT"))]
+            symbols_list = [
+                s
+                for (s,) in db.execute(
+                    select(Symbol.symbol).where(Symbol.quote_coin == "USDT", Symbol.market_type == market_type)
+                )
+            ]
         else:
             symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
         loader = MarketLoader(client=client, db=db)
@@ -61,7 +67,7 @@ def load(
         for symbol in symbols_list:
             for interval in interval_list:
                 try:
-                    summary = loader.load_candles(symbol=symbol, interval=interval)
+                    summary = loader.load_candles(symbol=symbol, interval=interval, market_type=market_type)
                     rows_requested_total += summary.rows_requested
                     rows_inserted_total += summary.rows_inserted
                     duplicates_total += summary.duplicates_skipped
@@ -114,41 +120,50 @@ def db_stats() -> None:
         grouped_stmt = (
             select(
                 Candle.symbol,
+                Candle.market_type,
                 Candle.interval,
                 func.count().label("cnt"),
                 func.min(Candle.open_time).label("min_ot"),
                 func.max(Candle.open_time).label("max_ot"),
             )
-            .group_by(Candle.symbol, Candle.interval)
-            .order_by(Candle.symbol.asc(), Candle.interval.asc())
+            .group_by(Candle.symbol, Candle.market_type, Candle.interval)
+            .order_by(Candle.symbol.asc(), Candle.market_type.asc(), Candle.interval.asc())
         )
-        for symbol, interval, cnt, min_ot, max_ot in db.execute(grouped_stmt):
+        for symbol, market_type, interval, cnt, min_ot, max_ot in db.execute(grouped_stmt):
             last = db.execute(
                 select(Candle.close, Candle.volume).where(
-                    Candle.symbol == symbol, Candle.interval == interval, Candle.open_time == max_ot
+                    Candle.symbol == symbol,
+                    Candle.market_type == market_type,
+                    Candle.interval == interval,
+                    Candle.open_time == max_ot,
                 )
             ).first()
             last_close = last[0] if last else None
             last_volume = last[1] if last else None
             typer.echo(
-                f"symbol={symbol} interval={interval} candles={cnt} "
+                f"symbol={symbol} market_type={market_type} interval={interval} candles={cnt} "
                 f"min_open_time={min_ot.isoformat()} max_open_time={max_ot.isoformat()} "
                 f"last_close={last_close} last_volume={last_volume}"
             )
 
 
 @app.command("candles")
-def candles(symbol: str, interval: str, tail: int = 10) -> None:
+def candles(
+    symbol: str,
+    interval: str,
+    tail: int = 10,
+    market_type: str = typer.Option("linear", "--market-type"),
+) -> None:
     with SessionLocal() as db:
         stmt = (
             select(Candle)
-            .where(Candle.symbol == symbol.upper(), Candle.interval == interval)
+            .where(Candle.symbol == symbol.upper(), Candle.market_type == market_type, Candle.interval == interval)
             .order_by(Candle.open_time.desc())
             .limit(tail)
         )
         rows = list(db.execute(stmt).scalars())
         if not rows:
-            typer.echo(f"No candles found for symbol={symbol.upper()} interval={interval}")
+            typer.echo(f"No candles found for symbol={symbol.upper()} market_type={market_type} interval={interval}")
             return
         for candle in reversed(rows):
             typer.echo(
