@@ -36,3 +36,50 @@ python main.py analyze --symbol BTCUSDT --intervals 60 240
 ```
 
 `load --symbols ALL` берёт список инструментов из таблицы `symbols`, поэтому перед первой загрузкой обязательно выполните `sync-symbols` (иначе данные могут не загрузиться).
+
+
+## CLI cheatsheet
+```bash
+python main.py load --symbols BTCUSDT ETHUSDT --intervals 15 60 --market-type linear
+```
+Загружает исторические свечи для выбранных символов и таймфреймов в таблицу `candles`.
+
+```bash
+python main.py scan --interval 60 --candles-limit 500 --market-type linear
+```
+Запускает сканер инструментов на указанном таймфрейме и выводит ранжированный список кандидатов.
+
+```bash
+python main.py levels --symbol BTCUSDT --interval 60 --export-csv ./artifacts/btc_levels.csv
+```
+Считает уровни поддержки/сопротивления и сохраняет CSV-файл для дальнейшего импорта (например, в TradingView).
+
+```bash
+python main.py analyze --symbol BTCUSDT --intervals 15 60 240 --market-type linear
+```
+Строит сводный аналитический отчёт по инструменту сразу на нескольких таймфреймах.
+
+```bash
+python main.py scheduler --once --market-type linear
+```
+Выполняет один проход планировщика (без фонового цикла) и завершает работу после загрузки данных.
+
+```bash
+python main.py self-test --quick --no-artifacts
+```
+Запускает быстрый набор самопроверок без сохранения диагностических артефактов на диск.
+
+```bash
+python main.py db-check
+```
+Проверяет целостность и консистентность данных/связей в базе.
+
+```bash
+python main.py db-stats
+```
+Показывает агрегированную статистику по свечам: объёмы, диапазон дат и последние значения.
+
+```bash
+python main.py candles --symbol BTCUSDT --interval 60 --limit 10
+```
+Выводит последние N свечей по инструменту и таймфрейму для быстрой ручной проверки.
