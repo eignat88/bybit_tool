@@ -9,6 +9,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.intervals import INTERVAL_TO_MS
 from app.db.models import Candle, Symbol
@@ -76,7 +77,13 @@ class MarketLoader:
         )
         return self.db.execute(stmt).scalar_one()
 
-    def load_candles(self, symbol: str, interval: str, market_type: str = "linear", limit: int = 1000) -> LoadSummary:
+    def load_candles(
+        self,
+        symbol: str,
+        interval: str,
+        market_type: str = settings.default_market_type,
+        limit: int = 1000,
+    ) -> LoadSummary:
         before_count = self._count_candles(symbol=symbol, interval=interval, market_type=market_type)
         latest = self._latest_open_time(symbol=symbol, interval=interval, market_type=market_type)
         start_ms = None
@@ -137,7 +144,7 @@ class MarketLoader:
             duplicates_skipped=duplicates,
         )
 
-    def sync_symbols(self, market_type: str = "linear") -> SyncSummary:
+    def sync_symbols(self, market_type: str = settings.default_market_type) -> SyncSummary:
         started_at = perf_counter()
         instruments: list[dict] = []
         next_cursor: str | None = None

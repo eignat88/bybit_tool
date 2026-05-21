@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from statistics import mean
 from typing import Any
 
+from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 
 
@@ -18,7 +19,7 @@ class DerivativesSignals:
 
 
 class DerivativesAnalyzer:
-    def __init__(self, client: BybitClient, market_type: str = "linear") -> None:
+    def __init__(self, client: BybitClient, market_type: str = settings.default_market_type) -> None:
         self.client = client
         self.market_type = market_type
 

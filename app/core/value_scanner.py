@@ -3,6 +3,7 @@ import logging
 
 from sqlalchemy import select
 
+from app.config.settings import settings
 from app.core.indicators import IndicatorSet, calculate_indicators
 from app.core.scoring import SCORING_VERSION, calculate_grid_score, tier_from_score
 from app.db.models import Candle, ScanResult, ScanRun, Symbol
@@ -35,7 +36,7 @@ class ValueScanner:
         strategy: str,
         top: int = 30,
         *,
-        market_type: str = "linear",
+        market_type: str = settings.default_market_type,
         interval: str = "60",
         candles_limit: int = 120,
     ) -> list[ScanRow]:
