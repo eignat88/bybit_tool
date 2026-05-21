@@ -197,11 +197,27 @@ def scheduler(
 
 
 @app.command("scan")
-def scan(strategy: str = "grid", top: int = 30) -> None:
+def scan(
+    strategy: str = "grid",
+    top: int = 30,
+    interval: str = typer.Option("60", "--interval"),
+    market_type: str = typer.Option("linear", "--market-type"),
+    candles_limit: int = typer.Option(120, "--candles-limit"),
+) -> None:
     scanner = ValueScanner()
-    rows = scanner.scan(strategy=strategy, top=top)
+    rows = scanner.scan(
+        strategy=strategy,
+        top=top,
+        interval=interval,
+        market_type=market_type,
+        candles_limit=candles_limit,
+    )
     for row in rows:
-        typer.echo(f"{row.symbol}: score={row.grid_score:.1f} tier={row.tier}")
+        typer.echo(
+            f"{row.symbol}: price={row.price:.6f} score={row.grid_score:.2f} tier={row.tier} "
+            f"atr%={row.atr_pct:.2f} rsi={row.rsi:.2f} adx={row.adx:.2f} "
+            f"vwap_dev%={row.vwap_deviation_pct:.2f} bb_width%={row.bb_width_pct:.2f}"
+        )
 
 
 @app.command("levels")
