@@ -37,6 +37,23 @@ python main.py analyze --symbol BTCUSDT --intervals 60 240
 
 `load --symbols ALL` берёт список инструментов из таблицы `symbols`, поэтому перед первой загрузкой обязательно выполните `sync-symbols` (иначе данные могут не загрузиться).
 
+## Запуск CLI
+CLI можно запускать двумя способами:
+
+```bash
+python main.py <command>
+```
+
+```bash
+bybit-tool <command>
+```
+
+Команда `bybit-tool` появляется после установки пакета и берётся из секции `pyproject.toml`:
+
+```toml
+[project.scripts]
+bybit-tool = "main:app"
+```
 
 ## CLI cheatsheet
 ```bash
