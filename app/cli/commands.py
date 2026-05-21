@@ -1,8 +1,17 @@
+from __future__ import annotations
+
+import logging
+import time
+
 import typer
 
+from app.core.bybit_client import BybitClient
 from app.core.levels_calculator import LevelsCalculator
+from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
-from app.db.repository import init_db
+from app.db.repository import SessionLocal, init_db
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 
 app = typer.Typer(help="Bybit Market Decision System CLI")
 
@@ -16,7 +25,23 @@ def init_db_command() -> None:
 
 @app.command("load")
 def load(symbols: str = "ALL", interval: str = "60") -> None:
-    typer.echo(f"TODO load candles: symbols={symbols}, interval={interval}")
+    started = time.perf_counter()
+    symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if symbols == "ALL":
+        raise typer.BadParameter("ALL is not implemented yet. Provide symbols like BTCUSDT,ETHUSDT")
+
+    client = BybitClient()
+    with SessionLocal() as db:
+        loader = MarketLoader(client=client, db=db)
+        for symbol in symbols_list:
+            summary = loader.load_candles(symbol=symbol, interval=interval)
+            typer.echo(
+                f"symbol={summary.symbol} interval={summary.interval} "
+                f"rows_inserted={summary.rows_inserted} duplicates_skipped={summary.duplicates_skipped}"
+            )
+
+    elapsed = time.perf_counter() - started
+    typer.echo(f"elapsed_time_sec={elapsed:.2f}")
 
 
 @app.command("scan")
