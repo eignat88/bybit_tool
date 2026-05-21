@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.derivatives import DerivativesAnalyzer
 from app.core.market_structure import build_market_structure, parse_timeframes_csv
@@ -56,7 +57,7 @@ def build_analysis_report(
     client: BybitClient,
     symbol: str,
     intervals: str,
-    market_type: str = "linear",
+    market_type: str = settings.default_market_type,
 ) -> tuple[AnalysisReport, dict[str, Any], str]:
     normalized_intervals = parse_timeframes_csv(intervals)
     derivatives = DerivativesAnalyzer(client=client, market_type=market_type).analyze(symbol)

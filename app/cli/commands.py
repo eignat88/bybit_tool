@@ -8,6 +8,7 @@ from pathlib import Path
 import typer
 from sqlalchemy import func, select
 
+from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.levels_calculator import LevelsCalculator
 from app.core.intervals import validate_intervals_csv
@@ -38,7 +39,7 @@ def init_db_command() -> None:
 def load(
     symbols: str = typer.Option("ALL", "--symbols"),
     intervals: str = typer.Option("60", "--intervals"),
-    market_type: str = typer.Option("linear", "--market-type"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
     started = time.perf_counter()
     try:
@@ -95,7 +96,7 @@ def load(
 
 
 @app.command("sync-symbols")
-def sync_symbols(market_type: str = "linear") -> None:
+def sync_symbols(market_type: str = settings.default_market_type) -> None:
     started = time.perf_counter()
     with SessionLocal() as db:
         loader = MarketLoader(client=BybitClient(), db=db)
@@ -151,7 +152,7 @@ def candles(
     symbol: str,
     interval: str,
     tail: int = 10,
-    market_type: str = typer.Option("linear", "--market-type"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
     with SessionLocal() as db:
         stmt = (
@@ -202,7 +203,7 @@ def scan(
     strategy: str = "grid",
     top: int = 30,
     interval: str = typer.Option("60", "--interval"),
-    market_type: str = typer.Option("linear", "--market-type"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
     candles_limit: int = typer.Option(120, "--candles-limit"),
 ) -> None:
     scanner = ValueScanner()
@@ -257,7 +258,7 @@ def levels(
 def analyze(
     symbol: str,
     intervals: str = "D,H4,H1",
-    market_type: str = typer.Option("linear", "--market-type"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
     with SessionLocal() as db:
         report, payload, markdown = build_analysis_report(
@@ -277,6 +278,9 @@ def analyze(
 @app.command("db-check")
 def db_check() -> None:
     results = validate_db_objects()
+    from app.testing.cli_validation import validate_market_type_consistency
+
+    results.append(validate_market_type_consistency())
     has_fail = False
     for r in results:
         status = "OK" if r.ok else "FAIL"

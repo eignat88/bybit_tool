@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+from app.config.settings import settings
 from app.testing.models import CheckResult
 
 
@@ -45,3 +46,26 @@ def validate_interval_consistency() -> CheckResult:
     ok = allowed_only and invalid_rejected
     details = [f"allowed={sorted(INTERVAL_TO_MS)}", f"invalid_rejected={invalid_rejected}"]
     return CheckResult(name="interval validation consistency", ok=ok, message="ok" if ok else "mismatch", details=details)
+
+
+def validate_market_type_consistency() -> CheckResult:
+    expected = settings.default_market_type
+    checks = [
+        [sys.executable, "main.py", "sync-symbols"],
+        [sys.executable, "main.py", "load", "--symbols", "BTCUSDT", "--intervals", "60"],
+    ]
+    mismatches: list[str] = []
+    for cmd in checks:
+        ok, out = _run(cmd)
+        if not ok:
+            mismatches.append(f"command failed: {' '.join(cmd[2:])}")
+            continue
+        if f"market_type={expected}" not in out and "sync-symbols" in cmd:
+            mismatches.append(f"sync-symbols output does not include market_type={expected}")
+    ok = not mismatches
+    return CheckResult(
+        name="market type consistency",
+        ok=ok,
+        message="ok" if ok else "mismatch",
+        details=mismatches or [f"default_market_type={expected}"],
+    )

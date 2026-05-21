@@ -5,6 +5,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from app.config.settings import settings
+
 import httpx
 
 LOGGER = logging.getLogger(__name__)
@@ -72,7 +74,7 @@ class BybitClient:
 
         raise BybitAPIError(f"Retries exhausted for endpoint={endpoint}")
 
-    def get_symbols(self, market_type: str = "linear", cursor: str | None = None) -> dict[str, Any]:
+    def get_symbols(self, market_type: str = settings.default_market_type, cursor: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"category": market_type}
         if cursor:
             params["cursor"] = cursor
@@ -82,7 +84,7 @@ class BybitClient:
         self,
         symbol: str,
         interval: str,
-        market_type: str = "linear",
+        market_type: str = settings.default_market_type,
         limit: int = 200,
         start_ms: int | None = None,
     ) -> dict[str, Any]:
@@ -96,25 +98,40 @@ class BybitClient:
             params["start"] = start_ms
         return self._request("/v5/market/kline", params).payload
 
-    def get_tickers(self, market_type: str = "linear", symbol: str | None = None) -> dict[str, Any]:
+    def get_tickers(self, market_type: str = settings.default_market_type, symbol: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"category": market_type}
         if symbol:
             params["symbol"] = symbol
         return self._request("/v5/market/tickers", params).payload
 
-    def get_open_interest(self, symbol: str, interval: str = "5min", market_type: str = "linear") -> dict[str, Any]:
+    def get_open_interest(
+        self,
+        symbol: str,
+        interval: str = "5min",
+        market_type: str = settings.default_market_type,
+    ) -> dict[str, Any]:
         return self._request(
             "/v5/market/open-interest",
             {"category": market_type, "symbol": symbol, "intervalTime": interval},
         ).payload
 
-    def get_funding_rates(self, symbol: str, market_type: str = "linear", limit: int = 50) -> dict[str, Any]:
+    def get_funding_rates(
+        self,
+        symbol: str,
+        market_type: str = settings.default_market_type,
+        limit: int = 50,
+    ) -> dict[str, Any]:
         return self._request(
             "/v5/market/funding/history",
             {"category": market_type, "symbol": symbol, "limit": limit},
         ).payload
 
-    def get_orderbook(self, symbol: str, market_type: str = "linear", limit: int = 50) -> dict[str, Any]:
+    def get_orderbook(
+        self,
+        symbol: str,
+        market_type: str = settings.default_market_type,
+        limit: int = 50,
+    ) -> dict[str, Any]:
         return self._request(
             "/v5/market/orderbook",
             {"category": market_type, "symbol": symbol, "limit": limit},
