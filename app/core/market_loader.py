@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.bybit_client import BybitClient
-from app.db.models import Candle
+from app.db.models import Candle, Symbol
 
 LOGGER = logging.getLogger(__name__)
 INTERVAL_TO_MS = {
@@ -35,6 +35,15 @@ class LoadSummary:
     rows_requested: int
     rows_inserted: int
     duplicates_skipped: int
+
+
+@dataclass(slots=True)
+class SyncSummary:
+    symbols_total: int
+    symbols_inserted: int
+    symbols_updated: int
+    symbols_skipped: int
+    market_type: str
 
 
 class MarketLoader:
@@ -139,4 +148,53 @@ class MarketLoader:
             rows_requested=rows_requested,
             rows_inserted=inserted_actual,
             duplicates_skipped=duplicates,
+        )
+
+    def sync_symbols(self, market_type: str = "linear") -> SyncSummary:
+        raw = self.client.get_symbols(market_type=market_type)
+        instruments = raw.get("result", {}).get("list", [])
+        usdt_only = [row for row in instruments if row.get("quoteCoin") == "USDT"]
+        symbols_total = len(usdt_only)
+        inserted = 0
+        updated = 0
+        skipped = 0
+
+        for row in usdt_only:
+            symbol_name = row.get("symbol", "")
+            existing = self.db.execute(select(Symbol).where(Symbol.symbol == symbol_name)).scalar_one_or_none()
+            launch_time = row.get("launchTime")
+            launch_dt = datetime.fromtimestamp(int(launch_time) / 1000, tz=UTC) if launch_time else None
+            payload = {
+                "market_type": market_type,
+                "base_coin": row.get("baseCoin", ""),
+                "quote_coin": row.get("quoteCoin", ""),
+                "status": row.get("status", ""),
+                "tick_size": float(row.get("priceFilter", {}).get("tickSize", 0.0)),
+                "qty_step": float(row.get("lotSizeFilter", {}).get("qtyStep", 0.0)),
+                "min_order_qty": float(row.get("lotSizeFilter", {}).get("minOrderQty", 0.0)),
+                "launch_time": launch_dt,
+                "updated_at": datetime.now(UTC),
+            }
+            if existing is None:
+                self.db.add(Symbol(symbol=symbol_name, **payload))
+                inserted += 1
+                continue
+
+            changed = False
+            for field, value in payload.items():
+                if getattr(existing, field) != value:
+                    setattr(existing, field, value)
+                    changed = True
+            if changed:
+                updated += 1
+            else:
+                skipped += 1
+
+        self.db.commit()
+        return SyncSummary(
+            symbols_total=symbols_total,
+            symbols_inserted=inserted,
+            symbols_updated=updated,
+            symbols_skipped=skipped,
+            market_type=market_type,
         )

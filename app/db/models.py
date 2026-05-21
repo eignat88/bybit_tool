@@ -13,7 +13,15 @@ class Symbol(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(30), unique=True, index=True)
-    market_type: Mapped[str] = mapped_column(String(10), default="perp", index=True)
+    market_type: Mapped[str] = mapped_column(String(10), default="linear", index=True)
+    base_coin: Mapped[str] = mapped_column(String(20), default="")
+    quote_coin: Mapped[str] = mapped_column(String(20), default="")
+    status: Mapped[str] = mapped_column(String(20), default="")
+    tick_size: Mapped[float] = mapped_column(Float, default=0.0)
+    qty_step: Mapped[float] = mapped_column(Float, default=0.0)
+    min_order_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    launch_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 
 class Candle(Base):
