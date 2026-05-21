@@ -14,6 +14,10 @@ Initial scaffold for unified Bybit analytics platform with PostgreSQL as data co
 - Stub core services:
   - `BybitClient`, `MarketLoader`, `ValueScanner`, `LevelsCalculator`, `scoring`
 
+## Migrations
+- `init-db` now runs Alembic migrations (`alembic upgrade head`).
+- Migration files are stored in `alembic/versions`.
+
 ## Quick start
 ```bash
 python main.py init-db

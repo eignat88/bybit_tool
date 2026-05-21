@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -55,6 +55,7 @@ class ScanRun(Base):
 
 class ScanResult(Base):
     __tablename__ = "scan_results"
+    __table_args__ = (Index("ix_scan_results_run_id_grid_score", "run_id", "grid_score"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("scan_runs.id"), index=True)
@@ -90,3 +91,51 @@ class AnalysisReport(Base):
     timeframe_set: Mapped[str] = mapped_column(String(64))
     report_json: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+class IndicatorValue(Base):
+    __tablename__ = "indicator_values"
+    __table_args__ = (
+        UniqueConstraint(
+            "symbol",
+            "interval",
+            "open_time",
+            "indicator_name",
+            "calc_version",
+            name="uq_indicator_values_key",
+        ),
+        Index("ix_indicator_values_symbol_interval_open_time", "symbol", "interval", "open_time"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    interval: Mapped[str] = mapped_column(String(10), index=True)
+    open_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    indicator_name: Mapped[str] = mapped_column(String(64), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    calc_version: Mapped[str] = mapped_column(String(24), default="v1", index=True)
+
+
+class BotRecommendation(Base):
+    __tablename__ = "bot_recommendations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
+    strategy_type: Mapped[str] = mapped_column(String(32), index=True)
+    params_json: Mapped[str] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Float, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    source_report_id: Mapped[int | None] = mapped_column(ForeignKey("analysis_reports.id"), nullable=True, index=True)
+
+
+class ApiRequestLog(Base):
+    __tablename__ = "api_request_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(255), index=True)
+    params_json: Mapped[str] = mapped_column(Text)
+    status_code: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    ret_code: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    latency_ms: Mapped[float] = mapped_column(Float, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
+    error_text: Mapped[str] = mapped_column(Text, default="")
