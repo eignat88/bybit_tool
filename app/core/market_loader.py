@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from time import perf_counter
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -137,6 +138,7 @@ class MarketLoader:
         )
 
     def sync_symbols(self, market_type: str = "linear") -> SyncSummary:
+        started_at = perf_counter()
         instruments: list[dict] = []
         next_cursor: str | None = None
 
@@ -153,10 +155,14 @@ class MarketLoader:
         inserted = 0
         updated = 0
         skipped = 0
+        existing_symbols = {
+            symbol.symbol: symbol
+            for symbol in self.db.execute(select(Symbol).where(Symbol.market_type == market_type)).scalars().all()
+        }
 
         for row in usdt_only:
             symbol_name = row.get("symbol", "")
-            existing = self.db.execute(select(Symbol).where(Symbol.symbol == symbol_name)).scalar_one_or_none()
+            existing = existing_symbols.get(symbol_name)
             launch_time = row.get("launchTime")
             launch_dt = datetime.fromtimestamp(int(launch_time) / 1000, tz=UTC) if launch_time else None
             payload = {
@@ -168,10 +174,9 @@ class MarketLoader:
                 "qty_step": float(row.get("lotSizeFilter", {}).get("qtyStep", 0.0)),
                 "min_order_qty": float(row.get("lotSizeFilter", {}).get("minOrderQty", 0.0)),
                 "launch_time": launch_dt,
-                "updated_at": datetime.now(UTC),
             }
             if existing is None:
-                self.db.add(Symbol(symbol=symbol_name, **payload))
+                self.db.add(Symbol(symbol=symbol_name, updated_at=datetime.now(UTC), **payload))
                 inserted += 1
                 continue
 
@@ -181,11 +186,17 @@ class MarketLoader:
                     setattr(existing, field, value)
                     changed = True
             if changed:
+                existing.updated_at = datetime.now(UTC)
                 updated += 1
             else:
                 skipped += 1
 
         self.db.commit()
+        duration_ms = (perf_counter() - started_at) * 1000
+        LOGGER.info(
+            "Symbols sync completed",
+            extra={"symbols_total": symbols_total, "duration_ms": round(duration_ms, 2), "market_type": market_type},
+        )
         return SyncSummary(
             symbols_total=symbols_total,
             symbols_inserted=inserted,
