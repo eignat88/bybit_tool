@@ -18,6 +18,9 @@ Initial scaffold for unified Bybit analytics platform with PostgreSQL as data co
   - `seed-dev-data` — быстрая загрузка тестовых dev-данных (BTC/ETH, 15m/1h) для локальной разработки.
 - SQLAlchemy data model for MVP entities:
   - `symbols`, `candles`, `scan_runs`, `scan_results`, `levels`, `analysis_reports`
+- Ограничения схемы по ключам инструментов и свечей:
+  - `symbols`: уникальность пары `(symbol, market_type)` (constraint `uq_symbol_market_type`), что позволяет хранить один и тот же тикер в разных типах рынка.
+  - `candles`: уникальность `(symbol, market_type, interval, open_time)` (constraint `uq_candle_key`).
 - Stub core services:
   - `BybitClient`, `MarketLoader`, `ValueScanner`, `LevelsCalculator`, `scoring`
 

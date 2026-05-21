@@ -10,9 +10,10 @@ class Base(DeclarativeBase):
 
 class Symbol(Base):
     __tablename__ = "symbols"
+    __table_args__ = (UniqueConstraint("symbol", "market_type", name="uq_symbol_market_type"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    symbol: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    symbol: Mapped[str] = mapped_column(String(30), index=True)
     market_type: Mapped[str] = mapped_column(String(10), default="linear", index=True)
     base_coin: Mapped[str] = mapped_column(String(20), default="")
     quote_coin: Mapped[str] = mapped_column(String(20), default="")
