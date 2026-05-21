@@ -4,11 +4,18 @@ Initial scaffold for unified Bybit analytics platform with PostgreSQL as data co
 
 ## Implemented now
 - Unified CLI entrypoint (`main.py`) with commands:
-  - `init-db`
-  - `load`
-  - `scan`
-  - `levels`
-  - `analyze`
+  - `init-db` — инициализация схемы БД через миграции Alembic.
+  - `load` — загрузка исторических свечей по выбранным символам/таймфреймам в БД.
+  - `sync-symbols` — синхронизация справочника торговых инструментов с Bybit.
+  - `db-stats` — агрегированная статистика по свечам в БД (объёмы, диапазон дат, последние значения).
+  - `candles` — вывод последних N свечей по конкретному инструменту и интервалу.
+  - `scheduler` — периодический запуск загрузки свечей по расписанию (15m/1h/4h/1d).
+  - `scan` — ранжирование инструментов по стратегии (например, grid) для поиска торговых кандидатов.
+  - `levels` — расчёт уровней поддержки/сопротивления с опциональным экспортом в CSV для TradingView.
+  - `analyze` — построение сводного аналитического отчёта по инструменту и нескольким таймфреймам.
+  - `db-check` — валидация целостности и консистентности данных/объектов в БД.
+  - `self-test` — запуск встроенного smoke/self-test набора проверок проекта.
+  - `seed-dev-data` — быстрая загрузка тестовых dev-данных (BTC/ETH, 15m/1h) для локальной разработки.
 - SQLAlchemy data model for MVP entities:
   - `symbols`, `candles`, `scan_runs`, `scan_results`, `levels`, `analysis_reports`
 - Stub core services:
