@@ -15,6 +15,10 @@ from app.core.value_scanner import ValueScanner
 from app.db.models import Candle, Symbol
 from app.db.repository import SessionLocal, init_db
 
+from app.testing.db_validation import validate_db_objects
+from app.testing.report import render_lines
+from app.testing.smoke_tests import run_self_test
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +33,10 @@ def init_db_command() -> None:
 
 
 @app.command("load")
-def load(symbols: str = "ALL", intervals: str = "60") -> None:
+def load(
+    symbols: str = typer.Option("ALL", "--symbols"),
+    intervals: str = typer.Option("60", "--intervals"),
+) -> None:
     started = time.perf_counter()
     allowed_intervals = {"15", "60", "240", "D"}
     interval_list = [i.strip().upper() for i in intervals.split(",") if i.strip()]
@@ -71,7 +78,7 @@ def load(symbols: str = "ALL", intervals: str = "60") -> None:
                         f"rows_requested=0 rows_inserted=0 error={type(exc).__name__}: {exc}",
                         err=True,
                     )
-                    LOGGER.exception("Load failed for symbol=%s interval=%s", symbol, interval)
+                    LOGGER.error("Load failed for symbol=%s interval=%s error=%s", symbol, interval, exc)
 
     elapsed = time.perf_counter() - started
     typer.echo(f"symbols_processed={len(symbols_processed)}")
@@ -151,7 +158,10 @@ def candles(symbol: str, interval: str, tail: int = 10) -> None:
 
 
 @app.command("scheduler")
-def scheduler(symbols: str = "ALL") -> None:
+def scheduler(
+    symbols: str = typer.Option("ALL", "--symbols"),
+    once: bool = typer.Option(False, "--once"),
+) -> None:
     Path("logs").mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler("logs/scheduler.log")
     file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s - %(message)s"))
@@ -167,6 +177,8 @@ def scheduler(symbols: str = "ALL") -> None:
         if now.minute == 0 and now.hour == 0:
             intervals.append("D")
         load(symbols=symbols, intervals=",".join(intervals))
+        if once:
+            break
         sleep_sec = 900 - (int(time.time()) % 900)
         time.sleep(max(sleep_sec, 1))
 
@@ -189,3 +201,29 @@ def levels(symbol: str, interval: str = "120") -> None:
 @app.command("analyze")
 def analyze(symbol: str, intervals: str = "D,H4,H1") -> None:
     typer.echo(f"TODO deep analysis for {symbol} intervals={intervals}")
+
+
+@app.command("db-check")
+def db_check() -> None:
+    results = validate_db_objects()
+    has_fail = False
+    for r in results:
+        status = "OK" if r.ok else "FAIL"
+        typer.echo(f"[{status}] {r.name}: {r.message}")
+        for d in r.details:
+            typer.echo(f"  - {d}")
+        has_fail = has_fail or not r.ok
+    raise typer.Exit(code=1 if has_fail else 0)
+
+
+@app.command("self-test")
+def self_test() -> None:
+    report = run_self_test()
+    for line in render_lines(report):
+        typer.echo(line)
+    raise typer.Exit(code=0 if report.success else 1)
+
+
+@app.command("seed-dev-data")
+def seed_dev_data() -> None:
+    load(symbols="BTCUSDT,ETHUSDT", intervals="15,60")
