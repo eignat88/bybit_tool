@@ -230,8 +230,19 @@ def db_check() -> None:
 
 
 @app.command("self-test")
-def self_test() -> None:
-    report = run_self_test()
+def self_test(
+    no_artifacts: bool = typer.Option(
+        False,
+        "--no-artifacts",
+        help="Disable report files (recommended for CI pipelines).",
+    ),
+    quick: bool = typer.Option(
+        False,
+        "--quick",
+        help="Run quick checks only (skip compileall). Recommended for fast CI smoke runs.",
+    ),
+) -> None:
+    report = run_self_test(quick=quick, write_artifacts=not no_artifacts)
     for line in render_lines(report):
         typer.echo(line)
     raise typer.Exit(code=0 if report.success else 1)

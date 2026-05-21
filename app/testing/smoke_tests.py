@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import compileall
+import os
 
 from app.testing.cli_validation import validate_cli_commands, validate_compact_error, validate_interval_consistency
 from app.testing.db_validation import validate_db_schema
 from app.testing.ingestion_validation import validate_duplicates, validate_ingestion
 from app.testing.models import CheckResult, SelfTestReport
-from app.testing.report import write_report
+from app.testing.report import maybe_write_report
 from app.testing.scheduler_validation import validate_scheduler_once
 
 
-def run_self_test() -> SelfTestReport:
+def run_self_test(*, quick: bool = False, write_artifacts: bool | None = None) -> SelfTestReport:
     report = SelfTestReport()
-    report.add(CheckResult(name="compileall", ok=compileall.compile_dir("app", quiet=1), message="compiled"))
+    if not quick:
+        report.add(CheckResult(name="compileall", ok=compileall.compile_dir("app", quiet=1), message="compiled"))
     for result in validate_db_schema():
         report.add(result)
     for result in validate_ingestion():
@@ -23,5 +25,7 @@ def run_self_test() -> SelfTestReport:
     report.add(validate_compact_error())
     report.add(validate_interval_consistency())
     report.add(validate_scheduler_once())
-    write_report(report)
+    if write_artifacts is None:
+        write_artifacts = os.getenv("SELF_TEST_WRITE_ARTIFACTS", "1").lower() not in {"0", "false", "no", "off"}
+    maybe_write_report(report, write_artifacts=write_artifacts)
     return report

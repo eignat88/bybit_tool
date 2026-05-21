@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,16 @@ def render_lines(report: SelfTestReport) -> list[str]:
         for d in r.details:
             lines.append(f"  - {d}")
     return lines
+
+
+def is_local_mode() -> bool:
+    return os.getenv("CI", "").lower() not in {"1", "true", "yes", "on"}
+
+
+def maybe_write_report(report: SelfTestReport, *, write_artifacts: bool = True) -> tuple[Path, Path] | None:
+    if write_artifacts and is_local_mode():
+        return write_report(report)
+    return None
 
 
 def write_report(report: SelfTestReport) -> tuple[Path, Path]:
