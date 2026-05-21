@@ -9,24 +9,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.bybit_client import BybitClient
+from app.core.intervals import INTERVAL_TO_MS
 from app.db.models import Candle, Symbol
 
 LOGGER = logging.getLogger(__name__)
-INTERVAL_TO_MS = {
-    "1": 60_000,
-    "3": 180_000,
-    "5": 300_000,
-    "15": 900_000,
-    "30": 1_800_000,
-    "60": 3_600_000,
-    "120": 7_200_000,
-    "240": 14_400_000,
-    "360": 21_600_000,
-    "720": 43_200_000,
-    "D": 86_400_000,
-    "W": 604_800_000,
-}
-
 
 @dataclass(slots=True)
 class LoadSummary:

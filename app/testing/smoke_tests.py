@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import compileall
 
-from app.testing.cli_validation import validate_cli_commands, validate_compact_error
+from app.testing.cli_validation import validate_cli_commands, validate_compact_error, validate_interval_consistency
 from app.testing.db_validation import validate_db_schema
 from app.testing.ingestion_validation import validate_duplicates, validate_ingestion
 from app.testing.models import CheckResult, SelfTestReport
@@ -21,6 +21,7 @@ def run_self_test() -> SelfTestReport:
     for result in validate_cli_commands():
         report.add(result)
     report.add(validate_compact_error())
+    report.add(validate_interval_consistency())
     report.add(validate_scheduler_once())
     write_report(report)
     return report
