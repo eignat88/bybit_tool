@@ -15,6 +15,20 @@ from app.core.market_structure import build_market_structure, parse_timeframes_c
 from app.db.models import AnalysisReport, Candle
 
 
+MIN_CANDLES_BY_INTERVAL: dict[str, int] = {
+    "D": 90,
+    "240": 120,
+    "H4": 120,
+    "60": 120,
+    "H1": 120,
+    "15": 120,
+}
+
+
+def _required_candles(interval: str) -> int:
+    return MIN_CANDLES_BY_INTERVAL.get(interval.upper(), 120)
+
+
 def _load_candles(db: Session, symbol: str, market_type: str, interval: str, limit: int = 220) -> list[dict[str, float]]:
     stmt = (
         select(Candle)
@@ -67,6 +81,13 @@ def build_analysis_report(
 
     for interval in normalized_intervals:
         candles = _load_candles(db=db, symbol=symbol, market_type=market_type, interval=interval)
+        required = _required_candles(interval)
+        if len(candles) < required:
+            raise ValueError(
+                f"Недостаточно свечей для symbol={symbol} interval={interval}: "
+                f"получено={len(candles)}, требуется>={required}"
+            )
+
         snapshot = build_market_structure(timeframe=interval, candles=candles)
         market_structure[interval] = {
             "trend_regime": snapshot.trend_regime,
