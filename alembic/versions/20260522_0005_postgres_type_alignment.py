@@ -35,7 +35,6 @@ def upgrade() -> None:
         "created_at",
         existing_type=sa.DateTime(timezone=True),
         nullable=False,
-        postgresql_using="created_at AT TIME ZONE 'UTC'",
     )
 
 
