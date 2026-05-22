@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from statistics import mean, pstdev
 
-from app.core.intervals import INTERVAL_TO_MS
+from app.core.intervals import INTERVAL_TO_MS, normalize_intervals
 
 TF_ALIASES: dict[str, str] = {
     "M1": "1",
@@ -39,21 +39,12 @@ def parse_timeframes_csv(timeframes_csv: str) -> list[str]:
     if not raw:
         raise ValueError("intervals/timeframes must not be empty")
 
-    normalized: list[str] = []
-    unsupported: list[str] = []
-    for tf in raw:
-        mapped = TF_ALIASES.get(tf, tf)
-        if mapped not in INTERVAL_TO_MS:
-            unsupported.append(tf)
-            continue
-        normalized.append(mapped)
-
-    if unsupported:
-        raise ValueError(f"Unsupported intervals/timeframes: {','.join(unsupported)}")
-
-    # stable unique + sort from high timeframe to low timeframe
-    unique = list(dict.fromkeys(normalized))
-    return sorted(unique, key=lambda x: INTERVAL_TO_MS[x], reverse=True)
+    mapped = [TF_ALIASES.get(tf, tf) for tf in raw]
+    try:
+        normalized, _ = normalize_intervals(mapped)
+    except ValueError as exc:
+        raise ValueError(str(exc).replace("Unsupported intervals", "Unsupported intervals/timeframes")) from exc
+    return normalized
 
 
 
