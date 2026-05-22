@@ -65,6 +65,27 @@ def load(
     run_load(symbols=symbols, intervals=intervals, market_type=market_type)
 
 
+@app.command("load-all")
+def load_all(
+    intervals: str = typer.Option("60", "--intervals"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
+) -> None:
+    """Sync symbols from Bybit, then load candles for all available USDT pairs."""
+    started = time.perf_counter()
+    with SessionLocal() as db:
+        loader = MarketLoader(client=BybitClient(), db=db)
+        summary = loader.sync_symbols(market_type=market_type)
+    typer.echo(f"symbols_total={summary.symbols_total}")
+    typer.echo(f"symbols_inserted={summary.symbols_inserted}")
+    typer.echo(f"symbols_updated={summary.symbols_updated}")
+    typer.echo(f"symbols_skipped={summary.symbols_skipped}")
+    typer.echo(f"market_type={summary.market_type}")
+
+    run_load(symbols="ALL", intervals=intervals, market_type=market_type)
+    elapsed = time.perf_counter() - started
+    typer.echo(f"load_all_elapsed_time_sec={elapsed:.2f}")
+
+
 def run_load(symbols: str, intervals: str, market_type: str) -> None:
     started = time.perf_counter()
     try:
