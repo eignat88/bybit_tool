@@ -21,6 +21,9 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     if not _has_column(inspector, "bot_recommendations", "market_type"):
         op.add_column("bot_recommendations", sa.Column("market_type", sa.String(length=10), nullable=True))
+
+    indexes = {idx.get("name") for idx in inspector.get_indexes("bot_recommendations") if idx.get("name")}
+    if "ix_bot_recommendations_market_type" not in indexes:
         op.create_index("ix_bot_recommendations_market_type", "bot_recommendations", ["market_type"])
 
 
