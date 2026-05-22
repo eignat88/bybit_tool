@@ -16,7 +16,9 @@ def upgrade() -> None:
     op.add_column("levels", sa.Column("market_type", sa.String(length=10), nullable=False, server_default="linear"))
     op.create_index("ix_levels_market_type", "levels", ["market_type"])
     op.create_index("ix_levels_symbol_market_type_interval", "levels", ["symbol", "market_type", "interval"])
-    op.alter_column("levels", "market_type", server_default=None)
+    bind = op.get_bind()
+    if bind.dialect.name != "sqlite":
+        op.alter_column("levels", "market_type", server_default=None)
 
 
 def downgrade() -> None:

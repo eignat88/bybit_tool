@@ -12,12 +12,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.drop_index("ix_symbols_symbol", table_name="symbols")
-    op.create_index("ix_symbols_symbol", "symbols", ["symbol"], unique=False)
-    op.create_unique_constraint("uq_symbol_market_type", "symbols", ["symbol", "market_type"])
+    with op.batch_alter_table("symbols") as batch_op:
+        batch_op.drop_index("ix_symbols_symbol")
+        batch_op.create_index("ix_symbols_symbol", ["symbol"], unique=False)
+        batch_op.create_unique_constraint("uq_symbol_market_type", ["symbol", "market_type"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_symbol_market_type", "symbols", type_="unique")
-    op.drop_index("ix_symbols_symbol", table_name="symbols")
-    op.create_index("ix_symbols_symbol", "symbols", ["symbol"], unique=True)
+    with op.batch_alter_table("symbols") as batch_op:
+        batch_op.drop_constraint("uq_symbol_market_type", type_="unique")
+        batch_op.drop_index("ix_symbols_symbol")
+        batch_op.create_index("ix_symbols_symbol", ["symbol"], unique=True)
