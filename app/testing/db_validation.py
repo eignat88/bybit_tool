@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import UniqueConstraint, inspect
+from sqlalchemy import DateTime, Float, UniqueConstraint, inspect
 
 from app.db.models import Base
 from app.db.repository import engine
@@ -28,10 +28,9 @@ def validate_db_schema() -> list[CheckResult]:
                 continue
             db_col = db_columns[col_name]
             db_type = str(db_col["type"]).lower()
-            model_type = str(col.type).lower()
-            if model_type.split("(")[0] not in db_type:
+            if not _types_equivalent(col.type, db_type):
                 ok = False
-                details.append(f"{table_name}.{col_name} type mismatch model={model_type} db={db_type}")
+                details.append(f"{table_name}.{col_name} type mismatch model={col.type} db={db_col['type']}")
             if bool(col.nullable) != bool(db_col["nullable"]):
                 ok = False
                 details.append(
@@ -46,6 +45,24 @@ def validate_db_schema() -> list[CheckResult]:
         msg = "schema valid" if ok else "schema drift detected"
         results.append(CheckResult(name=f"schema {table_name}", ok=ok, message=msg, details=details))
     return results
+
+
+def _types_equivalent(model_type: object, db_type_text: str) -> bool:
+    db_type = db_type_text.lower()
+
+    if isinstance(model_type, Float):
+        return any(token in db_type for token in ("float", "double precision", "real", "numeric", "decimal"))
+
+    if isinstance(model_type, DateTime):
+        tz_intended = bool(getattr(model_type, "timezone", False))
+        if tz_intended:
+            return "timestamp with time zone" in db_type or "timestamptz" in db_type
+        return "timestamp without time zone" in db_type or (
+            "timestamp" in db_type and "with time zone" not in db_type and "timestamptz" not in db_type
+        )
+
+    model_name = str(model_type).lower().split("(")[0]
+    return model_name in db_type
 
 
 def validate_db_objects() -> list[CheckResult]:
