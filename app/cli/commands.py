@@ -371,6 +371,8 @@ def analyze(
             typer.echo("Cannot build recommendation.", err=True)
             raise typer.Exit(code=1)
         typer.echo(f"Recommendation saved: id={rec.id}")
+        typer.echo(f"market_type={rec.market_type}")
+        typer.echo(f"source_report_id={rec.source_report_id}")
         typer.echo(f"symbol={rec.symbol}")
         typer.echo(f"strategy_type={rec.strategy_type}")
         typer.echo(f"confidence={rec.confidence:.2f}")
@@ -401,6 +403,8 @@ def recommend(
         raise typer.Exit(code=1)
 
     typer.echo(f"Recommendation saved: id={rec.id}")
+    typer.echo(f"market_type={rec.market_type}")
+    typer.echo(f"source_report_id={rec.source_report_id}")
     typer.echo(f"symbol={rec.symbol}")
     typer.echo(f"strategy_type={rec.strategy_type}")
     typer.echo(f"confidence={rec.confidence:.2f}")
