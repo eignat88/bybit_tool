@@ -62,6 +62,7 @@ class LevelsCalculator:
     DECAY_TAU_CANDLES = 120.0
     WIDTH_PENALTY_ATR_K = 1.0
     WIDTH_PENALTY_BETA = 1.4
+    SINGLE_CLUSTER_SCORE_CEILING = 95.0
 
     def calculate(self, symbol: str, interval: str, market_type: str = "linear") -> list[LevelResult]:
         symbol_u = symbol.upper()
@@ -149,6 +150,8 @@ class LevelsCalculator:
             percentile = 100.0 if n == 1 else (rank_position / (n - 1)) * 100.0
 
             percentile_score = self._map_percentile_to_score(percentile)
+            if cluster.merged_from_count == 1:
+                percentile_score = min(percentile_score, self.SINGLE_CLUSTER_SCORE_CEILING)
             cluster.raw_cluster_strength = round(raw_score, 2)
             cluster.percentile_rank = round(percentile, 2)
             cluster.cluster_strength = round(percentile_score, 2)

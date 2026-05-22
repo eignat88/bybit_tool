@@ -116,7 +116,7 @@ def test_percentile_small_samples():
         [LevelResult(100.0, "support", "bos", "", 0, cluster_strength=42.0)]
     )
     assert one[0].percentile_rank == 100.0
-    assert one[0].cluster_strength == 100.0
+    assert one[0].cluster_strength == 95.0
 
     two = calc._apply_percentile_scoring(
         [
