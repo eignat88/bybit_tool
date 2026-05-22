@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.levels_calculator import LevelsCalculator
+from app.core.indicator_store import IndicatorStore
 from app.core.intervals import validate_intervals_csv
 from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
@@ -233,6 +234,52 @@ def scan(
             f"atr%={row.atr_pct:.2f} rsi={row.rsi:.2f} adx={row.adx:.2f} "
             f"vwap_dev%={row.vwap_deviation_pct:.2f} bb_width%={row.bb_width_pct:.2f}"
         )
+
+
+@app.command("indicators")
+def indicators(
+    symbols: str = typer.Option("ALL", "--symbols"),
+    interval: str = typer.Option("60", "--interval"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
+    limit: int = typer.Option(300, "--limit"),
+    calc_version: str = typer.Option("v1", "--calc-version"),
+) -> None:
+    store = IndicatorStore()
+    symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()] or ["ALL"]
+    result = store.calculate_and_store(
+        symbols=symbols_list,
+        interval=interval,
+        market_type=market_type,
+        limit=limit,
+        calc_version=calc_version,
+    )
+
+    for row in result.rows:
+        if row.status == "ok":
+            typer.echo(
+                f"symbol={row.symbol} interval={row.interval} market_type={row.market_type} "
+                f"open_time={row.open_time} indicators_saved={row.indicators_saved} status=ok"
+            )
+            for name in ("atr_pct", "rsi", "adx", "vwap_deviation_pct", "bb_width_pct"):
+                typer.echo(f"  {name}={row.values[name]:.6f}")
+            typer.echo("")
+        elif row.status == "skipped":
+            typer.echo(
+                f"symbol={row.symbol} interval={row.interval} market_type={row.market_type} "
+                f"status=skipped reason={row.reason} candles={row.candles_count}"
+            )
+        else:
+            typer.echo(
+                f"symbol={row.symbol} interval={row.interval} market_type={row.market_type} "
+                f"status=failed error={row.error}"
+            )
+
+    typer.echo(f"symbols_requested={result.symbols_requested}")
+    typer.echo(f"symbols_processed={result.symbols_processed}")
+    typer.echo(f"symbols_skipped={result.symbols_skipped}")
+    typer.echo(f"symbols_failed={result.symbols_failed}")
+    typer.echo(f"indicators_saved_total={result.indicators_saved_total}")
+    typer.echo(f"elapsed_time_sec={result.elapsed_time_sec:.2f}")
 
 
 @app.command("levels")
