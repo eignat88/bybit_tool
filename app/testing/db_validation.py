@@ -15,6 +15,14 @@ LEVELS_REQUIRED_COLUMNS = [
     "is_cluster_primary",
 ]
 
+ANALYSIS_REPORTS_REQUIRED_INDEXES = [
+    "ix_analysis_reports_report_json_gin",
+    "ix_analysis_reports_json_market_type",
+    "ix_analysis_reports_json_overall_risk",
+    "ix_analysis_reports_json_candidate_strategy",
+    "ix_analysis_reports_json_eligible",
+]
+
 
 def get_missing_levels_columns() -> list[str]:
     inspector = inspect(engine)
@@ -104,6 +112,9 @@ def validate_db_objects() -> list[CheckResult]:
         model_indexes = {idx.name for idx in table.indexes if idx.name}
         db_indexes = {idx["name"] for idx in inspector.get_indexes(t) if idx.get("name")}
         missing_indexes = sorted(model_indexes - db_indexes)
+        if t == "analysis_reports":
+            missing_indexes.extend(name for name in ANALYSIS_REPORTS_REQUIRED_INDEXES if name not in db_indexes)
+            missing_indexes = sorted(set(missing_indexes))
 
         model_uq = {c.name for c in table.constraints if isinstance(c, UniqueConstraint) and c.name}
         db_uq_meta = inspector.get_unique_constraints(t)
