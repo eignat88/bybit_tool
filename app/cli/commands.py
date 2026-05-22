@@ -18,7 +18,7 @@ from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.core.report_builder import build_analysis_report
-from app.core.recommendation_builder import RecommendationBuilder
+from app.core.recommendation_builder import RecommendationBuilder, build_recommendation
 from app.core.domain_errors import DomainError, DataNotFoundWarning, RecommendationInputError
 from app.db.models import Candle, Symbol
 from app.db.models import AnalysisReport, BotRecommendation
@@ -327,6 +327,7 @@ def analyze(
     symbol: str,
     intervals: str = "D,H4,H1",
     market_type: str = typer.Option(settings.default_market_type, "--market-type"),
+    recommend: bool = typer.Option(False, "--recommend"),
 ) -> None:
     normalized_symbol = symbol.upper()
     try:
@@ -351,64 +352,37 @@ def analyze(
     _, timeframe_set = normalize_intervals(payload['timeframes'])
     typer.echo(f"timeframes={timeframe_set}")
 
+    if recommend:
+        intervals_list, _ = normalize_intervals(payload["timeframes"])
+        with SessionLocal() as db:
+            rec = build_recommendation(
+                db=db,
+                symbol=normalized_symbol,
+                market_type=market_type,
+                intervals=intervals_list,
+                source_report_id=report.id,
+            )
+        typer.echo(f"Recommendation saved: id={rec.id}")
+        typer.echo(f"symbol={rec.symbol}")
+        typer.echo(f"strategy_type={rec.strategy_type}")
+        typer.echo(f"confidence={rec.confidence:.2f}")
+
 
 @app.command("recommend")
 def recommend(
     symbol: str,
+    intervals: str = typer.Option("D,H4,H1", "--intervals"),
     market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
     normalized_symbol = symbol.upper()
+    interval_list = validate_intervals_csv(intervals)
     with SessionLocal() as db:
-        latest_report = db.execute(
-            select(AnalysisReport)
-            .where(AnalysisReport.symbol == normalized_symbol)
-            .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
-            .limit(1)
-        ).scalar_one_or_none()
+        rec = build_recommendation(db=db, symbol=normalized_symbol, market_type=market_type, intervals=interval_list)
 
-        if latest_report is None:
-            typer.echo(
-                "No analysis report found. Run: "
-                f"python main.py analyze {normalized_symbol} --market-type {market_type} --recommend"
-            )
-            raise typer.Exit(code=0)
-
-        try:
-            result = RecommendationBuilder().build(latest_report.report_json)
-        except DataNotFoundWarning as exc:
-            typer.echo(f"Recommendation skipped: {exc}")
-            raise typer.Exit(code=0) from exc
-        except RecommendationInputError as exc:
-            typer.echo(f"Cannot build recommendation: {exc}", err=True)
-            raise typer.Exit(code=2) from exc
-        except DomainError as exc:
-            typer.echo(f"Recommendation failed: {exc}", err=True)
-            raise typer.Exit(code=2) from exc
-
-        if result.status == "skip":
-            typer.echo(f"Recommendation skipped: reason={result.reason}")
-            if result.warnings:
-                typer.echo(f"warnings={','.join(result.warnings)}")
-            raise typer.Exit(code=0)
-
-        recommendation_payload: dict[str, object] = {
-            "symbol": normalized_symbol,
-            "strategy_type": result.strategy_type or "grid",
-            "params_json": json.dumps(result.params or {}),
-            "confidence": result.confidence or 0.0,
-            "source_report_id": latest_report.id,
-        }
-        recommendation_columns = {column["name"] for column in sa.inspect(db.bind).get_columns("bot_recommendations")}
-        if "market_type" in recommendation_columns:
-            recommendation_payload["market_type"] = market_type
-
-        insert_result = db.execute(sa.insert(BotRecommendation.__table__).values(**recommendation_payload))
-        db.commit()
-        recommendation_id = insert_result.inserted_primary_key[0] if insert_result.inserted_primary_key else None
-        typer.echo(
-            f"recommendation_id={recommendation_id} symbol={normalized_symbol} "
-            f"strategy={recommendation_payload['strategy_type']} confidence={float(recommendation_payload['confidence']):.2f}"
-        )
+    typer.echo(f"Recommendation saved: id={rec.id}")
+    typer.echo(f"symbol={rec.symbol}")
+    typer.echo(f"strategy_type={rec.strategy_type}")
+    typer.echo(f"confidence={rec.confidence:.2f}")
 
 
 @app.command("db-check")
