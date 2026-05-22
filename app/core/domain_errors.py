@@ -12,3 +12,7 @@ class RecommendationInputError(DomainError):
 class DataNotFoundWarning(DomainError):
     """Expected data was not found (business warning case)."""
 
+
+
+class AnalysisReportNotFoundError(DataNotFoundWarning):
+    """No suitable analysis report found for recommendation build."""
