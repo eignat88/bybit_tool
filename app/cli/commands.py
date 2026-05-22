@@ -19,7 +19,7 @@ from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.core.report_builder import build_analysis_report
 from app.core.recommendation_builder import RecommendationBuilder, build_recommendation
-from app.core.domain_errors import AnalysisReportNotFoundError, DomainError, DataNotFoundWarning, RecommendationInputError
+from app.core.domain_errors import AnalysisReportNotFoundError, DataNotFoundWarning, RecommendationInputError
 from app.db.models import Candle, Symbol
 from app.db.models import AnalysisReport, BotRecommendation
 from app.db.repository import SessionLocal, init_db, migrate_db
@@ -363,18 +363,13 @@ def analyze(
                     intervals=intervals_list,
                     source_report_id=report.id,
                 )
-        except AnalysisReportNotFoundError as exc:
-            typer.echo(
-                f"recommendation skipped for symbol={normalized_symbol} market_type={market_type}: {exc}",
-                err=True,
-            )
+        except AnalysisReportNotFoundError:
+            typer.echo(f"No analysis report found for {normalized_symbol}. Run analyze first.", err=True)
             raise typer.Exit(code=1)
-        except DomainError as exc:
-            typer.echo(
-                f"recommendation skipped for symbol={normalized_symbol} market_type={market_type}: {exc}",
-                err=True,
-            )
-            raise typer.Exit(code=2) from exc
+        except (DataNotFoundWarning, RecommendationInputError):
+            typer.echo(f"No candles found for {normalized_symbol} {market_type}.", err=True)
+            typer.echo("Cannot build recommendation.", err=True)
+            raise typer.Exit(code=1)
         typer.echo(f"Recommendation saved: id={rec.id}")
         typer.echo(f"symbol={rec.symbol}")
         typer.echo(f"strategy_type={rec.strategy_type}")
@@ -397,18 +392,13 @@ def recommend(
                 market_type=market_type,
                 intervals=interval_list,
             )
-    except AnalysisReportNotFoundError as exc:
-        typer.echo(
-            f"recommendation failed for symbol={normalized_symbol} market_type={market_type}: {exc}",
-            err=True,
-        )
+    except AnalysisReportNotFoundError:
+        typer.echo(f"No analysis report found for {normalized_symbol}. Run analyze first.", err=True)
         raise typer.Exit(code=1)
-    except DomainError as exc:
-        typer.echo(
-            f"recommendation failed for symbol={normalized_symbol} market_type={market_type}: {exc}",
-            err=True,
-        )
-        raise typer.Exit(code=2) from exc
+    except (DataNotFoundWarning, RecommendationInputError):
+        typer.echo(f"No candles found for {normalized_symbol} {market_type}.", err=True)
+        typer.echo("Cannot build recommendation.", err=True)
+        raise typer.Exit(code=1)
 
     typer.echo(f"Recommendation saved: id={rec.id}")
     typer.echo(f"symbol={rec.symbol}")
