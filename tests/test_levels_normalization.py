@@ -46,8 +46,8 @@ def test_weighted_merge_prioritizes_bos_over_fvg_score():
     calc = LevelsCalculator()
     candles = [make_candle(i, 100 + i, 102 + i, 98 + i, 101 + i) for i in range(60)]
     raw = [
-        LevelResult(110.0, "support", "fvg", "", 80),
-        LevelResult(110.04, "support", "bos", "", 65),
+        LevelResult(110.0, "support", "fvg", "", 80, event_open_time=candles[-47].open_time),
+        LevelResult(110.04, "support", "bos", "", 65, event_open_time=candles[-47].open_time),
     ]
 
     normalized = calc._normalize_levels(raw, candles, atr=1.0)
@@ -165,3 +165,26 @@ def test_choch_does_not_get_artificial_score_boost_from_multiplier():
     baseline_weighted = ((70.0 * 1.0) + (60.0 * 0.5)) / (1.0 + 0.5)
     assert normalized[0].cluster_strength < 100.0
     assert normalized[0].cluster_strength < baseline_weighted * 2
+
+
+def test_older_level_scores_lower_than_newer_with_equal_inputs():
+    calc = LevelsCalculator()
+    candles = [make_candle(i, 100 + i, 102 + i, 98 + i, 101 + i) for i in range(120)]
+
+    newer = [LevelResult(110.0, "support", "bos", "", 70.0, event_open_time=candles[-2].open_time)]
+    older = [LevelResult(210.0, "support", "bos", "", 70.0, event_open_time=candles[10].open_time)]
+
+    newer_cluster = calc._normalize_levels(newer, candles, atr=1.0)[0]
+    older_cluster = calc._normalize_levels(older, candles, atr=1.0)[0]
+
+    assert older_cluster.cluster_strength < newer_cluster.cluster_strength
+
+
+def test_age_decay_multiplier_is_monotonic_by_event_age():
+    calc = LevelsCalculator()
+
+    near = calc._age_decay_multiplier_by_event(1.0)
+    mid = calc._age_decay_multiplier_by_event(50.0)
+    far = calc._age_decay_multiplier_by_event(200.0)
+
+    assert near > mid > far
