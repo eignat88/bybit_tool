@@ -496,7 +496,7 @@ def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, inte
         "recommendation_basis": recommendation_basis,
     }
 
-    report = AnalysisReport(symbol=symbol, timeframe_set=",".join(normalized_intervals), report_json=json.dumps(payload))
+    report = AnalysisReport(symbol=symbol, timeframe_set=",".join(normalized_intervals), report_json=payload)
     db.add(report)
     db.commit()
     db.refresh(report)
