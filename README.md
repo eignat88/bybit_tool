@@ -7,6 +7,7 @@ CLI-инструмент для сбора рыночных данных Bybit, 
   - `init-db` — инициализация схемы БД через миграции Alembic.
   - `migrate-db` — применение миграций Alembic до актуальной версии схемы.
   - `load` — загрузка исторических свечей по выбранным символам/таймфреймам в БД.
+  - `load-all` — синхронизация всех доступных USDT-символов с Bybit и загрузка свечей по ним.
   - `sync-symbols` — синхронизация справочника торговых инструментов с Bybit.
   - `db-stats` — агрегированная статистика по свечам в БД (объёмы, диапазон дат, последние значения).
   - `candles` — вывод последних N свечей по конкретному инструменту и интервалу.
@@ -46,6 +47,7 @@ CLI-инструмент для сбора рыночных данных Bybit, 
 python main.py init-db
 python main.py sync-symbols --market-type linear
 python main.py load --symbols BTCUSDT,ETHUSDT,SOLUSDT --intervals 15,60,240 --market-type linear
+python main.py load-all --intervals 60,240 --market-type linear
 python main.py indicators --symbols BTCUSDT,ETHUSDT,SOLUSDT --interval 60 --market-type linear
 python main.py scan --strategy grid --top 30 --interval 60 --market-type linear --candles-limit 120
 python main.py levels BTCUSDT --interval 60 --market-type linear
