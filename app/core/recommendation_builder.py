@@ -39,6 +39,21 @@ def _normalize_timeframes(value: Any) -> tuple[str, ...]:
     return tuple(sorted(set(raw)))
 
 
+def _validate_recommendation_payload(strategy_type: Any, confidence: Any) -> tuple[str, float]:
+    normalized_strategy = str(strategy_type or "skip")
+    if normalized_strategy not in ALLOWED_STRATEGIES:
+        raise RecommendationInputError("strategy_type must be one of: grid|trend_follow|range_trade|skip")
+
+    try:
+        normalized_confidence = float(confidence)
+    except (TypeError, ValueError) as exc:
+        raise RecommendationInputError("confidence must be a float in range [0.0, 1.0]") from exc
+
+    if not (0.0 <= normalized_confidence <= 1.0):
+        raise RecommendationInputError("confidence must be in range [0.0, 1.0]")
+    return normalized_strategy, normalized_confidence
+
+
 class RecommendationBuilder:
     """Build trading recommendation from analysis payload."""
 
@@ -194,6 +209,9 @@ def build_recommendation(
     rsi = float(getattr(scan, "rsi", ind_map.get("rsi", 50.0)) or 50.0)
     grid_score = float(getattr(scan, "grid_score", 0.0) or 0.0)
     tier = str(getattr(scan, "tier", "") or "")
+    atr_pct = getattr(scan, "atr_pct", None)
+    vwap_deviation_pct = getattr(scan, "vwap_deviation_pct", None)
+    bb_width_pct = getattr(scan, "bb_width_pct", None)
 
     reasons: list[str] = []
     warnings: list[str] = []
@@ -233,9 +251,7 @@ def build_recommendation(
     confidence += 0.15 if strategy_type != "skip" else 0.0
     confidence = min(max(confidence, 0.0), 1.0)
 
-    if strategy_type not in ALLOWED_STRATEGIES:
-        strategy_type = "skip"
-        warnings.append("invalid_strategy_normalized_to_skip")
+    strategy_type, confidence = _validate_recommendation_payload(strategy_type=strategy_type, confidence=confidence)
 
     params_json = {
         "symbol": normalized_symbol,
@@ -247,8 +263,11 @@ def build_recommendation(
         "scanner": {
             "grid_score": grid_score,
             "tier": tier,
+            "atr_pct": float(atr_pct) if atr_pct is not None else None,
             "rsi": rsi,
             "adx": adx,
+            "vwap_deviation_pct": float(vwap_deviation_pct) if vwap_deviation_pct is not None else None,
+            "bb_width_pct": float(bb_width_pct) if bb_width_pct is not None else None,
         },
         "levels": {
             "nearest_support": nearest_support,
