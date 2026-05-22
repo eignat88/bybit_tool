@@ -131,6 +131,15 @@ python main.py candles --symbol BTCUSDT --interval 60 --limit 10
 ```
 Выводит последние N свечей по инструменту и таймфрейму для быстрой ручной проверки.
 
+## Grid ATR% eligibility rule
+Для стратегии `grid` допустимый диапазон волатильности по `atr_pct` задаётся явными константами:
+- `MIN_ATR_PCT = 1.0`
+- `MAX_ATR_PCT = 5.0`
+
+Правило: кандидат считается допустимым по ATR%, если `1.0 <= atr_pct <= 5.0`.
+Если `atr_pct` ниже/выше диапазона, в отчёт добавляются диагностические `warnings/reasons`,
+а рекомендация получает блокирующий фактор по ATR%.
+
 ## JSONB report filtering patterns (`analysis_reports.report_json`)
 После миграции `20260522_0008` поле `analysis_reports.report_json` хранится в типе `jsonb` и покрывается:
 - GIN-индексом по всему документу: `ix_analysis_reports_report_json_gin`.
