@@ -188,3 +188,34 @@ def test_age_decay_multiplier_is_monotonic_by_event_age():
     far = calc._age_decay_multiplier_by_event(200.0)
 
     assert near > mid > far
+
+
+def test_cluster_spread_penalty_has_no_penalty_below_threshold():
+    calc = LevelsCalculator()
+    calc.WIDTH_PENALTY_ATR_K = 0.2
+    cluster = [
+        LevelResult(100.0, "support", "bos", "", 70.0),
+        LevelResult(100.19, "support", "fvg", "", 60.0),
+    ]
+
+    penalty = calc._cluster_spread_penalty(cluster, center_price=100.0, atr=1.0)
+    assert penalty == 1.0
+
+
+def test_cluster_spread_penalty_strengthens_as_spread_grows():
+    calc = LevelsCalculator()
+    calc.WIDTH_PENALTY_ATR_K = 0.1
+    calc.WIDTH_PENALTY_BETA = 2.0
+    compact = [
+        LevelResult(100.0, "support", "bos", "", 70.0),
+        LevelResult(100.15, "support", "fvg", "", 60.0),
+    ]
+    wide = [
+        LevelResult(100.0, "support", "bos", "", 70.0),
+        LevelResult(100.30, "support", "fvg", "", 60.0),
+    ]
+
+    compact_penalty = calc._cluster_spread_penalty(compact, center_price=100.0, atr=1.0)
+    wide_penalty = calc._cluster_spread_penalty(wide, center_price=100.0, atr=1.0)
+
+    assert 0.0 < wide_penalty < compact_penalty < 1.0

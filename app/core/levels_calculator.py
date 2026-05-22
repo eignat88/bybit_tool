@@ -60,7 +60,8 @@ class LevelsCalculator:
     PROXIMITY_BONUS_FACTOR = 2.2
     PROXIMITY_DISTANCE_FACTOR = 1.8
     DECAY_TAU_CANDLES = 120.0
-    CLUSTER_SPREAD_PENALTY_FACTOR = 1.4
+    WIDTH_PENALTY_ATR_K = 1.0
+    WIDTH_PENALTY_BETA = 1.4
 
     def calculate(self, symbol: str, interval: str, market_type: str = "linear") -> list[LevelResult]:
         symbol_u = symbol.upper()
@@ -280,9 +281,11 @@ class LevelsCalculator:
         if len(cluster) <= 1:
             return 1.0
         spread = max(x.level_price for x in cluster) - min(x.level_price for x in cluster)
-        reference = max(self._cluster_distance_threshold(center_price, atr), 1e-9)
-        ratio = spread / reference
-        return 1.0 / (1.0 + max(0.0, ratio - 1.0) * self.CLUSTER_SPREAD_PENALTY_FACTOR)
+        threshold = max(atr * self.WIDTH_PENALTY_ATR_K, 1e-9)
+        if spread <= threshold:
+            return 1.0
+        excess_ratio = (spread - threshold) / threshold
+        return 1.0 / (1.0 + self.WIDTH_PENALTY_BETA * excess_ratio)
 
     def _count_touches(self, candles: list[Candle], price: float, atr: float) -> int:
         threshold = max(atr * 0.1, price * 0.0005)
