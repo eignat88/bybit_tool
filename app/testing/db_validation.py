@@ -55,12 +55,22 @@ def validate_db_schema() -> list[CheckResult]:
                     f"{table_name}.{col_name} nullable mismatch model={col.nullable} db={db_col['nullable']}"
                 )
 
+        if table_name == "analysis_reports" and "report_json" in db_columns:
+            actual_type = str(db_columns["report_json"]["type"]).lower()
+            if "jsonb" not in actual_type:
+                ok = False
+                details.append(f"analysis_reports.report_json expected jsonb, found {db_columns['report_json']['type']}")
+
         for col_name in db_columns:
             if col_name not in model_columns:
                 ok = False
                 details.append(f"{table_name}.{col_name} extra in database")
 
         msg = "schema valid" if ok else "schema drift detected"
+        if table_name == "analysis_reports":
+            jsonb_error = next((d for d in details if d.startswith("analysis_reports.report_json expected jsonb")), None)
+            if jsonb_error:
+                msg = jsonb_error
         results.append(CheckResult(name=f"schema {table_name}", ok=ok, message=msg, details=details))
     return results
 
