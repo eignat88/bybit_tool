@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from app.db.models import AnalysisReport, BotRecommendation, Candle, IndicatorValue, Level, ScanResult
 
-from app.core.domain_errors import DataNotFoundWarning, RecommendationInputError
+from app.core.domain_errors import AnalysisReportNotFoundError, DataNotFoundWarning, RecommendationInputError
 
 ALLOWED_STRUCTURE_EVENTS = {"bos", "choch"}
 EVENT_WINDOW = 5
@@ -25,6 +25,18 @@ class RecommendationResult:
     strategy_type: str | None = None
     params: dict[str, Any] | None = None
     confidence: float | None = None
+
+
+
+
+def _normalize_timeframes(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        raw = [item.strip().upper() for item in value.split(",") if item.strip()]
+    elif isinstance(value, list):
+        raw = [str(item).strip().upper() for item in value if str(item).strip()]
+    else:
+        raw = []
+    return tuple(sorted(set(raw)))
 
 
 class RecommendationBuilder:
@@ -128,20 +140,25 @@ def build_recommendation(
     if source_report_id is not None:
         report = db.execute(select(AnalysisReport).where(AnalysisReport.id == source_report_id)).scalar_one_or_none()
     if report is None:
-        report = db.execute(
+        normalized_intervals = _normalize_timeframes(intervals)
+        fallback_reports = db.execute(
             select(AnalysisReport)
-            .where(AnalysisReport.symbol == normalized_symbol, AnalysisReport.market_type == market_type)
-            .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
-            .limit(1)
-        ).scalar_one_or_none()
-    if report is None:
-        if source_report_id is not None:
-            raise DataNotFoundWarning(
-                f"analysis_report_not_found_for_id_or_symbol_market_type: source_report_id={source_report_id} symbol={normalized_symbol} market_type={market_type}"
+            .where(
+                AnalysisReport.symbol == normalized_symbol,
+                AnalysisReport.report_json["market_type"].astext == market_type,
             )
-        raise DataNotFoundWarning(
-            f"analysis_report_not_found_for_symbol_market_type: symbol={normalized_symbol} market_type={market_type}"
+            .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
+        ).scalars().all()
+        report = next(
+            (
+                candidate
+                for candidate in fallback_reports
+                if _normalize_timeframes((candidate.report_json or {}).get("timeframes")) == normalized_intervals
+            ),
+            None,
         )
+    if report is None:
+        raise AnalysisReportNotFoundError(f"No analysis report found for {normalized_symbol}. Run analyze first.")
 
     scan = db.execute(
         select(ScanResult).where(ScanResult.symbol == normalized_symbol).order_by(ScanResult.id.desc()).limit(1)
