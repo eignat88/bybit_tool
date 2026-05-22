@@ -3,6 +3,10 @@ from app.core.indicators import IndicatorSet
 
 SCORING_VERSION = "v1"
 
+# Acceptable ATR%% band for grid recommendations.
+MIN_ATR_PCT = 1.0
+MAX_ATR_PCT = 5.0
+
 
 def calculate_grid_score(indicators: IndicatorSet) -> float:
     atr_component = _score_range(indicators.atr_pct, target=2.5, tolerance=2.0)

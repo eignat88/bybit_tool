@@ -15,6 +15,7 @@ from app.core.derivatives import DerivativesAnalyzer
 from app.core.indicators import calculate_indicators
 from app.core.intervals import normalize_intervals
 from app.core.market_structure import build_market_structure, parse_timeframes_csv
+from app.core.scoring import MAX_ATR_PCT, MIN_ATR_PCT
 from app.db.models import AnalysisReport, Candle, IndicatorValue, Level, ScanResult, ScanRun
 
 
@@ -299,12 +300,14 @@ def build_risk_summary(*, nearest_levels: dict[str, Any], indicator_snapshot: di
     if atr_pct is None:
         volatility_risk = "medium"
         warnings.append("atr_pct is unavailable")
-    elif atr_pct < 1:
+    elif atr_pct < MIN_ATR_PCT:
         volatility_risk = "low"
-    elif atr_pct < 3:
+        warnings.append(f"atr_pct is below grid minimum ({MIN_ATR_PCT:.2f}%)")
+    elif atr_pct <= MAX_ATR_PCT:
         volatility_risk = "medium"
     else:
         volatility_risk = "high"
+        warnings.append(f"atr_pct is above grid maximum ({MAX_ATR_PCT:.2f}%)")
 
     adx = ind.get("adx")
     if adx is None:
@@ -374,6 +377,14 @@ def build_recommendation_basis(*, risk_summary: dict[str, Any], nearest_levels: 
     if risk_summary.get("overall_risk") == "high":
         blocking_factors.append("overall_risk is high")
 
+    atr_pct = nearest_levels.get("atr_pct")
+    if atr_pct is None:
+        blocking_factors.append("atr_pct is unavailable")
+    elif atr_pct < MIN_ATR_PCT:
+        blocking_factors.append(f"atr_pct ({atr_pct:.2f}%) is below {MIN_ATR_PCT:.2f}%")
+    elif atr_pct > MAX_ATR_PCT:
+        blocking_factors.append(f"atr_pct ({atr_pct:.2f}%) is above {MAX_ATR_PCT:.2f}%")
+
     eligible = len(blocking_factors) == 0
     primary_interval = nearest_levels.get("primary_interval")
     tf_levels = levels_summary.get(primary_interval, {})
@@ -402,6 +413,14 @@ def build_recommendation_basis(*, risk_summary: dict[str, Any], nearest_levels: 
         f"trend strength is {trend_strength}",
         f"scanner risk is {scanner_risk}",
     ]
+    if atr_pct is None:
+        reasons.append("atr_pct is unavailable")
+    elif atr_pct < MIN_ATR_PCT:
+        reasons.append(f"atr_pct is below grid band ({MIN_ATR_PCT:.2f}%–{MAX_ATR_PCT:.2f}%)")
+    elif atr_pct > MAX_ATR_PCT:
+        reasons.append(f"atr_pct is above grid band ({MIN_ATR_PCT:.2f}%–{MAX_ATR_PCT:.2f}%)")
+    else:
+        reasons.append(f"atr_pct is within grid band ({MIN_ATR_PCT:.2f}%–{MAX_ATR_PCT:.2f}%)")
 
     return {
         "eligible_for_recommendation": eligible,
