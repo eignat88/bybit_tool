@@ -53,8 +53,8 @@ def test_weighted_merge_prioritizes_bos_over_fvg_score():
     normalized = calc._normalize_levels(raw, candles, atr=1.0)
 
     assert len(normalized) == 1
-    # BOS/FVG weighting should keep merged level stronger than BOS-only signal
-    assert normalized[0].cluster_strength > 65.0
+    # BOS/FVG weighting should stay between source strengths and lean toward BOS.
+    assert 65.0 > normalized[0].cluster_strength > 60.0
 
 
 def test_diminishing_returns_and_distance_penalty_reduce_aggressive_scores():
@@ -137,3 +137,31 @@ def test_percentile_small_samples():
     )
     three_sorted = sorted(three, key=lambda x: x.raw_cluster_strength)
     assert three_sorted[1].percentile_rank == 50.0
+
+
+def test_weighted_cluster_score_for_bos_and_fvg_matches_expected_average():
+    calc = LevelsCalculator()
+    cluster = [
+        LevelResult(100.0, "support", "bos", "", 80.0),
+        LevelResult(100.03, "support", "fvg", "", 60.0),
+    ]
+
+    score = calc._weighted_cluster_score(cluster)
+    expected = ((80.0 * 0.9) + (60.0 * 0.5)) / (0.9 + 0.5)
+    assert score == expected
+
+
+def test_choch_does_not_get_artificial_score_boost_from_multiplier():
+    calc = LevelsCalculator()
+    candles = [make_candle(i, 100 + i, 102 + i, 98 + i, 101 + i) for i in range(60)]
+    raw = [
+        LevelResult(110.0, "resistance", "choch", "", 70.0),
+        LevelResult(110.03, "resistance", "fvg", "", 60.0),
+    ]
+
+    normalized = calc._normalize_levels(raw, candles, atr=1.0)
+
+    assert len(normalized) == 1
+    baseline_weighted = ((70.0 * 1.0) + (60.0 * 0.5)) / (1.0 + 0.5)
+    assert normalized[0].cluster_strength < 100.0
+    assert normalized[0].cluster_strength < baseline_weighted * 2

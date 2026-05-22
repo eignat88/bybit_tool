@@ -43,8 +43,8 @@ class LevelsCalculator:
     CLUSTER_PERCENT_THRESHOLD = 0.0015
 
     SOURCE_PRIORITY = {"choch": 4, "bos": 3, "swing_high": 2, "swing_low": 2, "fvg": 1}
-    SOURCE_STRENGTH_MULTIPLIER = {"choch": 1.15, "bos": 1.1, "swing_high": 1.03, "swing_low": 1.03, "fvg": 0.88}
-    SOURCE_WEIGHT = {"choch": 1.35, "bos": 1.2, "swing_high": 1.0, "swing_low": 1.0, "fvg": 0.65}
+    SOURCE_WEIGHT = {"choch": 1.0, "bos": 0.9, "swing": 0.7, "fvg": 0.5}
+    SOURCE_STRENGTH_MULTIPLIER = {"choch": 1.0, "bos": 1.0, "swing_high": 1.0, "swing_low": 1.0, "fvg": 1.0}
 
     FVG_MIN_GAP_SIZE = 5.0
     FVG_ATR_MIN_FACTOR = 0.08
@@ -256,12 +256,17 @@ class LevelsCalculator:
         weighted_sum = 0.0
         weight_total = 0.0
         for level in cluster:
-            weight = self.SOURCE_WEIGHT.get(level.source_type, 1.0)
+            weight = self.SOURCE_WEIGHT.get(self._weight_source_group(level.source_type), 1.0)
             weighted_sum += level.strength_score * weight
             weight_total += weight
         if weight_total <= 0.0:
             return mean(x.strength_score for x in cluster)
         return weighted_sum / weight_total
+
+    def _weight_source_group(self, source_type: str) -> str:
+        if source_type in {"swing_high", "swing_low"}:
+            return "swing"
+        return source_type
 
     def _cluster_spread_penalty(self, cluster: list[LevelResult], center_price: float, atr: float) -> float:
         if len(cluster) <= 1:
