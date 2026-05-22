@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy import func, select
 
 from app.config.settings import settings
-from app.core.bybit_client import BybitClient
+from app.core.bybit_client import BybitAPIError, BybitClient
 from app.core.levels_calculator import LevelsCalculator
 from app.core.indicator_store import IndicatorStore
 from app.core.intervals import normalize_intervals, validate_intervals_csv
@@ -339,17 +339,24 @@ def analyze(
                 intervals=intervals,
                 market_type=market_type,
             )
+    except BybitAPIError:
+        typer.echo(f"Cannot analyze {normalized_symbol}: no candles found or symbol is invalid.", err=True)
+        raise typer.Exit(code=1)
     except ValueError as exc:
-        typer.echo(
-            f"analyze failed for symbol={normalized_symbol} intervals={intervals}: {exc}",
-            err=True,
-        )
-        raise typer.Exit(code=2) from exc
+        message = str(exc).lower()
+        if "недостаточно свечей" in message or "not enough candles" in message:
+            typer.echo(f"Cannot analyze {normalized_symbol}: no candles found or symbol is invalid.", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"analyze failed for symbol={normalized_symbol} intervals={intervals}: {exc}", err=True)
+        raise typer.Exit(code=2)
 
     typer.echo(markdown)
     typer.echo("")
     typer.echo(f"report_id={report.id}")
-    _, timeframe_set = normalize_intervals(payload['timeframes'])
+    if not payload or not payload.get("timeframes"):
+        typer.echo(f"Cannot analyze {normalized_symbol}: analysis report is empty.", err=True)
+        raise typer.Exit(code=1)
+    _, timeframe_set = normalize_intervals(payload["timeframes"])
     typer.echo(f"timeframes={timeframe_set}")
 
     if recommend:
