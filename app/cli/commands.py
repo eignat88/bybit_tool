@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 from pathlib import Path
 
 import typer
+import sqlalchemy as sa
 from sqlalchemy import func, select
 
 from app.config.settings import settings
@@ -371,6 +373,37 @@ def db_check() -> None:
             typer.echo(f"  - {d}")
         has_fail = has_fail or not r.ok
     raise typer.Exit(code=1 if has_fail else 0)
+
+
+@app.command("precheck-report-json")
+def precheck_report_json(limit: int | None = typer.Option(None, "--limit", min=1)) -> None:
+    """Validate that analysis_reports.report_json values are valid JSON before jsonb migration."""
+    with SessionLocal() as db:
+        query = select(
+            sa.text("id"),
+            sa.text("symbol"),
+            sa.text("report_json"),
+        ).select_from(sa.text("analysis_reports")).order_by(sa.text("id DESC"))
+        if limit is not None:
+            query = query.limit(limit)
+
+        invalid: list[tuple[int, str, str]] = []
+        total = 0
+        for row in db.execute(query):
+            total += 1
+            payload = row.report_json
+            try:
+                json.loads(payload)
+            except Exception as exc:  # noqa: BLE001
+                invalid.append((row.id, row.symbol, str(exc)))
+
+        if invalid:
+            typer.echo(f"FAIL invalid_json_rows={len(invalid)} checked_rows={total}")
+            for row_id, symbol, error in invalid[:20]:
+                typer.echo(f"- id={row_id} symbol={symbol} error={error}")
+            raise typer.Exit(code=1)
+
+    typer.echo(f"OK valid_json_rows={total}")
 
 
 @app.command("self-test")

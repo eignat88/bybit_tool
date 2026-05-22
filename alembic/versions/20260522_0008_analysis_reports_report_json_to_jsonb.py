@@ -86,7 +86,7 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 """
-                CREATE INDEX IF NOT EXISTS ix_analysis_reports_market_type_expr
+                CREATE INDEX IF NOT EXISTS ix_analysis_reports_json_market_type
                 ON analysis_reports ((report_json ->> 'market_type'));
                 """
             )
@@ -95,8 +95,8 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 """
-                CREATE INDEX IF NOT EXISTS ix_analysis_reports_overall_risk_expr
-                ON analysis_reports ((report_json ->> 'overall_risk'));
+                CREATE INDEX IF NOT EXISTS ix_analysis_reports_json_overall_risk
+                ON analysis_reports ((report_json -> 'risk_summary' ->> 'overall_risk'));
                 """
             )
         )
@@ -104,8 +104,8 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 """
-                CREATE INDEX IF NOT EXISTS ix_analysis_reports_candidate_strategy_expr
-                ON analysis_reports ((report_json ->> 'candidate_strategy'));
+                CREATE INDEX IF NOT EXISTS ix_analysis_reports_json_candidate_strategy
+                ON analysis_reports ((report_json -> 'recommendation_basis' ->> 'candidate_strategy'));
                 """
             )
         )
@@ -113,8 +113,8 @@ def upgrade() -> None:
         op.execute(
             sa.text(
                 """
-                CREATE INDEX IF NOT EXISTS ix_analysis_reports_eligible_for_recommendation_expr
-                ON analysis_reports ((report_json ->> 'eligible_for_recommendation'));
+                CREATE INDEX IF NOT EXISTS ix_analysis_reports_json_eligible
+                ON analysis_reports ((report_json -> 'recommendation_basis' ->> 'eligible_for_recommendation'));
                 """
             )
         )
@@ -130,10 +130,10 @@ def downgrade() -> None:
     op.execute(
         sa.text(
             """
-            DROP INDEX IF EXISTS ix_analysis_reports_eligible_for_recommendation_expr;
-            DROP INDEX IF EXISTS ix_analysis_reports_candidate_strategy_expr;
-            DROP INDEX IF EXISTS ix_analysis_reports_overall_risk_expr;
-            DROP INDEX IF EXISTS ix_analysis_reports_market_type_expr;
+            DROP INDEX IF EXISTS ix_analysis_reports_json_eligible;
+            DROP INDEX IF EXISTS ix_analysis_reports_json_candidate_strategy;
+            DROP INDEX IF EXISTS ix_analysis_reports_json_overall_risk;
+            DROP INDEX IF EXISTS ix_analysis_reports_json_market_type;
             DROP INDEX IF EXISTS ix_analysis_reports_report_json_gin;
 
             ALTER TABLE analysis_reports
