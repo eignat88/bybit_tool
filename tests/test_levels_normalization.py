@@ -77,3 +77,63 @@ def test_diminishing_returns_and_distance_penalty_reduce_aggressive_scores():
 
     assert compact.cluster_strength < 100.0
     assert wide.cluster_strength < compact.cluster_strength
+
+
+def test_percentile_monotonicity():
+    calc = LevelsCalculator()
+    clusters = [
+        LevelResult(100.0, "support", "bos", "a", 0, cluster_strength=10.0),
+        LevelResult(101.0, "support", "bos", "b", 0, cluster_strength=20.0),
+        LevelResult(102.0, "support", "bos", "c", 0, cluster_strength=30.0),
+        LevelResult(103.0, "support", "bos", "d", 0, cluster_strength=40.0),
+    ]
+
+    scored = calc._apply_percentile_scoring(clusters)
+    ordered = sorted(scored, key=lambda x: x.raw_cluster_strength)
+
+    assert ordered[0].cluster_strength <= ordered[1].cluster_strength <= ordered[2].cluster_strength <= ordered[3].cluster_strength
+
+
+def test_percentile_median_is_near_50():
+    calc = LevelsCalculator()
+    clusters = [
+        LevelResult(200.0, "support", "bos", "a", 0, cluster_strength=10.0),
+        LevelResult(201.0, "support", "bos", "b", 0, cluster_strength=20.0),
+        LevelResult(202.0, "support", "bos", "c", 0, cluster_strength=30.0),
+        LevelResult(203.0, "support", "bos", "d", 0, cluster_strength=40.0),
+        LevelResult(204.0, "support", "bos", "e", 0, cluster_strength=50.0),
+    ]
+
+    scored = calc._apply_percentile_scoring(clusters)
+    median_cluster = sorted(scored, key=lambda x: x.raw_cluster_strength)[2]
+    assert 49.0 <= median_cluster.cluster_strength <= 51.0
+
+
+def test_percentile_small_samples():
+    calc = LevelsCalculator()
+
+    one = calc._apply_percentile_scoring(
+        [LevelResult(100.0, "support", "bos", "", 0, cluster_strength=42.0)]
+    )
+    assert one[0].percentile_rank == 100.0
+    assert one[0].cluster_strength == 100.0
+
+    two = calc._apply_percentile_scoring(
+        [
+            LevelResult(100.0, "support", "bos", "", 0, cluster_strength=10.0),
+            LevelResult(101.0, "support", "bos", "", 0, cluster_strength=20.0),
+        ]
+    )
+    two_sorted = sorted(two, key=lambda x: x.raw_cluster_strength)
+    assert two_sorted[0].percentile_rank == 0.0
+    assert two_sorted[1].percentile_rank == 100.0
+
+    three = calc._apply_percentile_scoring(
+        [
+            LevelResult(100.0, "support", "bos", "", 0, cluster_strength=10.0),
+            LevelResult(101.0, "support", "bos", "", 0, cluster_strength=20.0),
+            LevelResult(102.0, "support", "bos", "", 0, cluster_strength=30.0),
+        ]
+    )
+    three_sorted = sorted(three, key=lambda x: x.raw_cluster_strength)
+    assert three_sorted[1].percentile_rank == 50.0

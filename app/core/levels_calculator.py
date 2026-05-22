@@ -27,6 +27,8 @@ class LevelResult:
     original_prices: str = ""
     normalized_price: float | None = None
     cluster_strength: float = 0.0
+    raw_cluster_strength: float = 0.0
+    percentile_rank: float = 0.0
     merged_from_count: int = 1
     is_cluster_primary: bool = True
 
@@ -122,8 +124,47 @@ class LevelsCalculator:
         out.extend(self._detect_fvg(candles, avg_range, atr))
 
         normalized = self._normalize_levels(out, candles, atr)
-        normalized.sort(key=lambda x: x.strength_score, reverse=True)
-        return normalized[: self.MAX_LEVELS_PER_SOURCE * 4]
+        scored = self._apply_percentile_scoring(normalized)
+        scored.sort(key=lambda x: x.cluster_strength, reverse=True)
+        return scored[: self.MAX_LEVELS_PER_SOURCE * 4]
+
+    def _apply_percentile_scoring(self, clusters: list[LevelResult]) -> list[LevelResult]:
+        if not clusters:
+            return []
+        sorted_scores = sorted(c.cluster_strength for c in clusters)
+        n = len(sorted_scores)
+
+        for cluster in clusters:
+            raw_score = cluster.cluster_strength
+            less_count = sum(1 for score in sorted_scores if score < raw_score)
+            equal_count = sum(1 for score in sorted_scores if score == raw_score)
+            # Midrank percentile for ties: all tied values receive the same percentile.
+            rank_position = less_count + (equal_count - 1) / 2
+            percentile = 100.0 if n == 1 else (rank_position / (n - 1)) * 100.0
+
+            percentile_score = self._map_percentile_to_score(percentile)
+            cluster.raw_cluster_strength = round(raw_score, 2)
+            cluster.percentile_rank = round(percentile, 2)
+            cluster.cluster_strength = round(percentile_score, 2)
+            cluster.strength_score = round(percentile_score, 2)
+            cluster.description = (
+                f"{cluster.description}; "
+                f"raw_score={cluster.raw_cluster_strength:.2f}; "
+                f"percentile={cluster.percentile_rank:.2f}; "
+                f"percentile_score={cluster.cluster_strength:.2f}"
+            )
+        return clusters
+
+    def _map_percentile_to_score(self, percentile: float) -> float:
+        p = max(0.0, min(100.0, percentile))
+        if p >= 99.0:
+            # Top 1% -> 95..100
+            return 95.0 + ((p - 99.0) / 1.0) * 5.0
+        if p >= 95.0:
+            # Top 5% -> 85..95
+            return 85.0 + ((p - 95.0) / 4.0) * 10.0
+        # Linear baseline where median is near 50.
+        return p
 
     def _calculate_atr(self, candles: list[Candle], period: int = 14) -> float:
         trs: list[float] = []
@@ -206,6 +247,7 @@ class LevelsCalculator:
             original_prices=",".join(f"{x.level_price:.4f}" for x in cluster),
             normalized_price=normalized_price,
             cluster_strength=round(new_score, 2),
+            raw_cluster_strength=round(new_score, 2),
             merged_from_count=len(cluster),
             is_cluster_primary=True,
         )
