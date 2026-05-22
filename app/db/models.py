@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -84,6 +84,11 @@ class Level(Base):
     source_type: Mapped[str] = mapped_column(String(30), index=True)
     description: Mapped[str] = mapped_column(String(250), default="")
     strength_score: Mapped[float] = mapped_column(Float, default=0.0)
+    cluster_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    normalized_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cluster_strength: Mapped[float] = mapped_column(Float, default=0.0)
+    merged_from_count: Mapped[int] = mapped_column(Integer, default=1)
+    is_cluster_primary: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class AnalysisReport(Base):

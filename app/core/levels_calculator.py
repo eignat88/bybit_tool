@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import math
 from dataclasses import dataclass
 from statistics import mean
 
@@ -7,6 +9,8 @@ from sqlalchemy import delete, select
 
 from app.db.models import Candle, Level
 from app.db.repository import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -16,12 +20,40 @@ class LevelResult:
     source_type: str
     description: str
     strength_score: float
+    cluster_id: str | None = None
+    cluster_size: int = 1
+    merged_sources: str = ""
+    merged_level_count: int = 1
+    original_prices: str = ""
+    normalized_price: float | None = None
+    cluster_strength: float = 0.0
+    merged_from_count: int = 1
+    is_cluster_primary: bool = True
 
 
 class LevelsCalculator:
     LOOKBACK = 350
     SWING_WINDOW = 2
     MAX_LEVELS_PER_SOURCE = 25
+
+    NORMALIZATION_MODE = "atr"  # atr|percent
+    CLUSTER_ATR_MULTIPLIER = 0.15
+    CLUSTER_PERCENT_THRESHOLD = 0.0015
+
+    SOURCE_PRIORITY = {"choch": 4, "bos": 3, "swing_high": 2, "swing_low": 2, "fvg": 1}
+    SOURCE_STRENGTH_MULTIPLIER = {"choch": 1.25, "bos": 1.15, "swing_high": 1.05, "swing_low": 1.05, "fvg": 0.9}
+
+    FVG_MIN_GAP_SIZE = 5.0
+    FVG_ATR_MIN_FACTOR = 0.08
+    FVG_DISPLACEMENT_FACTOR = 1.2
+    FVG_USE_VOLUME_CONFIRMATION = False
+    FVG_VOLUME_FACTOR = 1.3
+
+    CLUSTER_SIZE_BONUS_FACTOR = 4.0
+    TOUCH_BONUS_FACTOR = 1.8
+    PROXIMITY_BONUS_FACTOR = 2.2
+    PROXIMITY_DISTANCE_FACTOR = 1.8
+    DECAY_TAU_CANDLES = 120.0
 
     def calculate(self, symbol: str, interval: str, market_type: str = "linear") -> list[LevelResult]:
         symbol_u = symbol.upper()
@@ -67,6 +99,11 @@ class LevelsCalculator:
                         source_type=row.source_type,
                         description=row.description,
                         strength_score=row.strength_score,
+                        cluster_id=row.cluster_id,
+                        normalized_price=row.normalized_price or row.level_price,
+                        cluster_strength=row.cluster_strength or row.strength_score,
+                        merged_from_count=row.merged_from_count,
+                        is_cluster_primary=row.is_cluster_primary,
                     )
                     for row in results
                 ]
@@ -76,13 +113,116 @@ class LevelsCalculator:
 
     def _detect_levels(self, candles: list[Candle]) -> list[LevelResult]:
         avg_range = mean([(c.high - c.low) for c in candles[-100:]])
+        atr = self._calculate_atr(candles)
         out: list[LevelResult] = []
         out.extend(self._detect_swings(candles, avg_range))
         out.extend(self._detect_bos_choch(candles, avg_range))
-        out.extend(self._detect_fvg(candles, avg_range))
+        out.extend(self._detect_fvg(candles, avg_range, atr))
 
-        out.sort(key=lambda x: x.strength_score, reverse=True)
-        return out[: self.MAX_LEVELS_PER_SOURCE * 4]
+        normalized = self._normalize_levels(out, candles, atr)
+        normalized.sort(key=lambda x: x.strength_score, reverse=True)
+        return normalized[: self.MAX_LEVELS_PER_SOURCE * 4]
+
+    def _calculate_atr(self, candles: list[Candle], period: int = 14) -> float:
+        trs: list[float] = []
+        for i in range(1, len(candles)):
+            curr = candles[i]
+            prev = candles[i - 1]
+            tr = max(curr.high - curr.low, abs(curr.high - prev.close), abs(curr.low - prev.close))
+            trs.append(tr)
+        sample = trs[-period:] if len(trs) >= period else trs
+        return mean(sample) if sample else 0.0
+
+    def _cluster_distance_threshold(self, ref_price: float, atr: float) -> float:
+        if self.NORMALIZATION_MODE == "percent":
+            return max(ref_price * self.CLUSTER_PERCENT_THRESHOLD, 1e-9)
+        return max(atr * self.CLUSTER_ATR_MULTIPLIER, 1e-9)
+
+    def _normalize_levels(self, raw: list[LevelResult], candles: list[Candle], atr: float) -> list[LevelResult]:
+        if not raw:
+            return []
+        sorted_levels = sorted(raw, key=lambda x: x.level_price)
+        clusters: list[list[LevelResult]] = []
+
+        for level in sorted_levels:
+            if not clusters:
+                clusters.append([level])
+                continue
+            prev_cluster = clusters[-1]
+            ref_price = mean(x.level_price for x in prev_cluster)
+            threshold = self._cluster_distance_threshold(ref_price, atr)
+            if abs(level.level_price - ref_price) <= threshold:
+                prev_cluster.append(level)
+            else:
+                clusters.append([level])
+
+        logger.debug("[LEVEL_NORMALIZER] cluster created count=%s", len(clusters))
+        return [self._merge_cluster(cluster, idx, candles, atr, sorted_levels) for idx, cluster in enumerate(clusters, start=1)]
+
+    def _merge_cluster(
+        self,
+        cluster: list[LevelResult],
+        idx: int,
+        candles: list[Candle],
+        atr: float,
+        all_levels: list[LevelResult],
+    ) -> LevelResult:
+        primary = max(cluster, key=lambda x: (self.SOURCE_PRIORITY.get(x.source_type, 0), x.strength_score))
+        normalized_price = mean(x.level_price for x in cluster)
+        merged_sources = sorted({x.source_type for x in cluster})
+        base_score = mean(x.strength_score for x in cluster)
+        cluster_size_bonus = (len(cluster) - 1) * self.CLUSTER_SIZE_BONUS_FACTOR
+        source_bonus = self.SOURCE_PRIORITY.get(primary.source_type, 0) * 2.5
+        touch_bonus = self._count_touches(candles, normalized_price, atr) * self.TOUCH_BONUS_FACTOR
+        proximity_bonus = self._proximity_bonus(normalized_price, primary.source_type, all_levels, atr)
+        age_decay = self._age_decay_multiplier(candles, normalized_price)
+
+        new_score = (base_score + cluster_size_bonus + source_bonus + touch_bonus + proximity_bonus)
+        new_score *= self.SOURCE_STRENGTH_MULTIPLIER.get(primary.source_type, 1.0)
+        new_score *= age_decay
+        new_score = max(0.0, min(100.0, new_score))
+
+        logger.debug(
+            "[LEVEL_NORMALIZER] levels merged cluster_id=%s merged=%s score=%.2f",
+            idx,
+            len(cluster),
+            new_score,
+        )
+
+        return LevelResult(
+            level_price=normalized_price,
+            level_type=primary.level_type,
+            source_type=primary.source_type,
+            description=f"Normalized cluster from {len(cluster)} levels",
+            strength_score=round(new_score, 2),
+            cluster_id=f"cluster_{idx}",
+            cluster_size=len(cluster),
+            merged_sources=",".join(merged_sources),
+            merged_level_count=len(cluster),
+            original_prices=",".join(f"{x.level_price:.4f}" for x in cluster),
+            normalized_price=normalized_price,
+            cluster_strength=round(new_score, 2),
+            merged_from_count=len(cluster),
+            is_cluster_primary=True,
+        )
+
+    def _count_touches(self, candles: list[Candle], price: float, atr: float) -> int:
+        threshold = max(atr * 0.1, price * 0.0005)
+        return sum(1 for c in candles if c.low <= price + threshold and c.high >= price - threshold)
+
+    def _proximity_bonus(self, price: float, source_type: str, all_levels: list[LevelResult], atr: float) -> float:
+        threshold = max(atr * self.PROXIMITY_DISTANCE_FACTOR, price * self.CLUSTER_PERCENT_THRESHOLD)
+        strong_neighbors = [
+            lvl for lvl in all_levels if lvl.source_type != source_type and abs(lvl.level_price - price) <= threshold and lvl.strength_score >= 60
+        ]
+        return len(strong_neighbors) * self.PROXIMITY_BONUS_FACTOR
+
+    def _age_decay_multiplier(self, candles: list[Candle], price: float) -> float:
+        for i, candle in enumerate(reversed(candles)):
+            if candle.low <= price <= candle.high:
+                age = i
+                return math.exp(-(age / max(self.DECAY_TAU_CANDLES, 1e-9)))
+        return 1.0
 
     def _detect_swings(self, candles: list[Candle], avg_range: float) -> list[LevelResult]:
         swings: list[LevelResult] = []
@@ -109,52 +249,64 @@ class LevelsCalculator:
                 source = "bos" if trend >= 0 else "choch"
                 trend = 1
                 score = min(100.0, 55.0 + (c.close - recent_high) / max(avg_range, 1e-9) * 15.0)
-                levels.append(
-                    LevelResult(
-                        recent_high,
-                        "support",
-                        source,
-                        f"{source.upper()} up confirmed by close breakout",
-                        round(score, 2),
-                    )
-                )
+                levels.append(LevelResult(recent_high, "support", source, f"{source.upper()} up confirmed by close breakout", round(score, 2)))
             if c.close < recent_low:
                 source = "bos" if trend <= 0 else "choch"
                 trend = -1
                 score = min(100.0, 55.0 + (recent_low - c.close) / max(avg_range, 1e-9) * 15.0)
-                levels.append(
-                    LevelResult(
-                        recent_low,
-                        "resistance",
-                        source,
-                        f"{source.upper()} down confirmed by close breakout",
-                        round(score, 2),
-                    )
-                )
+                levels.append(LevelResult(recent_low, "resistance", source, f"{source.upper()} down confirmed by close breakout", round(score, 2)))
             recent_high = max(recent_high, c.high)
             recent_low = min(recent_low, c.low)
         return levels[-self.MAX_LEVELS_PER_SOURCE :]
 
-    def _detect_fvg(self, candles: list[Candle], avg_range: float) -> list[LevelResult]:
+    def _detect_fvg(self, candles: list[Candle], avg_range: float, atr: float) -> list[LevelResult]:
         fvgs: list[LevelResult] = []
+        avg_volume = mean([c.volume for c in candles[-100:]]) if candles else 0.0
         for i in range(2, len(candles)):
             c0 = candles[i - 2]
+            c1 = candles[i - 1]
             c2 = candles[i]
+            displacement = abs(c1.close - c1.open)
             if c2.low > c0.high:
                 gap = c2.low - c0.high
+                if not self._fvg_passes_filters(gap, atr, displacement, avg_range, c1.volume, avg_volume):
+                    logger.debug("[LEVEL_NORMALIZER] fvg filtered type=bull gap=%.4f", gap)
+                    continue
                 score = min(100.0, 50.0 + gap / max(avg_range, 1e-9) * 18.0)
                 fvgs.append(LevelResult((c2.low + c0.high) / 2.0, "support", "fvg", "Bullish FVG midpoint", round(score, 2)))
             elif c2.high < c0.low:
                 gap = c0.low - c2.high
+                if not self._fvg_passes_filters(gap, atr, displacement, avg_range, c1.volume, avg_volume):
+                    logger.debug("[LEVEL_NORMALIZER] fvg filtered type=bear gap=%.4f", gap)
+                    continue
                 score = min(100.0, 50.0 + gap / max(avg_range, 1e-9) * 18.0)
                 fvgs.append(LevelResult((c2.high + c0.low) / 2.0, "resistance", "fvg", "Bearish FVG midpoint", round(score, 2)))
         return fvgs[-self.MAX_LEVELS_PER_SOURCE :]
 
+    def _fvg_passes_filters(
+        self,
+        gap: float,
+        atr: float,
+        displacement: float,
+        avg_range: float,
+        candle_volume: float,
+        avg_volume: float,
+    ) -> bool:
+        if gap < self.FVG_MIN_GAP_SIZE:
+            return False
+        if gap < atr * self.FVG_ATR_MIN_FACTOR:
+            return False
+        if displacement < avg_range * self.FVG_DISPLACEMENT_FACTOR:
+            return False
+        if self.FVG_USE_VOLUME_CONFIRMATION and candle_volume < avg_volume * self.FVG_VOLUME_FACTOR:
+            return False
+        return True
+
     def to_tradingview_csv(self, levels: list[LevelResult]) -> str:
-        lines = ["price,type,source,description,strength"]
+        lines = ["price,type,source,description,strength,cluster_id,cluster_size,merged_from_count"]
         for lvl in levels:
             safe_desc = lvl.description.replace(",", " ")
             lines.append(
-                f"{lvl.level_price:.8f},{lvl.level_type},{lvl.source_type},{safe_desc},{lvl.strength_score:.2f}"
+                f"{lvl.level_price:.8f},{lvl.level_type},{lvl.source_type},{safe_desc},{lvl.strength_score:.2f},{lvl.cluster_id or ''},{lvl.cluster_size},{lvl.merged_from_count}"
             )
         return "\n".join(lines)
