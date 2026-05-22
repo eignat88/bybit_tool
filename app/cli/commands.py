@@ -30,9 +30,13 @@ app = typer.Typer(help="Bybit Market Decision System CLI")
 
 @app.command("init-db")
 def init_db_command() -> None:
-    """Create MVP tables."""
-    init_db()
-    typer.echo("Database schema initialized")
+    """Apply Alembic migrations up to head."""
+    try:
+        init_db()
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"init-db failed: {type(exc).__name__}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo("Database schema initialized via alembic upgrade head")
 
 
 @app.command("load")
@@ -41,6 +45,10 @@ def load(
     intervals: str = typer.Option("60", "--intervals"),
     market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
+    run_load(symbols=symbols, intervals=intervals, market_type=market_type)
+
+
+def run_load(symbols: str, intervals: str, market_type: str) -> None:
     started = time.perf_counter()
     try:
         interval_list = validate_intervals_csv(intervals)
@@ -176,6 +184,7 @@ def candles(
 def scheduler(
     symbols: str = typer.Option("ALL", "--symbols"),
     once: bool = typer.Option(False, "--once"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
     Path("logs").mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler("logs/scheduler.log")
@@ -184,7 +193,7 @@ def scheduler(
     typer.echo("Scheduler started")
     while True:
         intervals = get_scheduler_intervals()
-        load(symbols=symbols, intervals=",".join(intervals))
+        run_load(symbols=symbols, intervals=",".join(intervals), market_type=market_type)
         if once:
             break
         sleep_sec = 900 - (int(time.time()) % 900)
@@ -314,4 +323,4 @@ def self_test(
 
 @app.command("seed-dev-data")
 def seed_dev_data() -> None:
-    load(symbols="BTCUSDT,ETHUSDT", intervals="15,60")
+    run_load(symbols="BTCUSDT,ETHUSDT", intervals="15,60", market_type=settings.default_market_type)
