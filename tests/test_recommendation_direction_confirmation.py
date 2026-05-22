@@ -56,3 +56,39 @@ def test_conflict_between_trend_and_structure_returns_skip():
     result = builder.build(payload)
     assert result.status == "skip"
     assert result.reason == "direction_not_confirmed"
+
+
+def test_actionable_strategy_below_confidence_threshold_returns_skip_low_confidence():
+    builder = RecommendationBuilder()
+    payload = _report(
+        trend="trend_up",
+        events=[{"type": "BOS", "side": "bullish"}],
+        strongest_support={"level_price": 95.0, "strength_score": 0.8},
+        strongest_resistance={"level_price": 105.0, "strength_score": 0.3},
+    )
+    payload["recommendation_basis"]["candidate_strategy"] = "grid"
+    payload["recommendation_basis"]["confidence_score"] = 0.59
+
+    result = builder.build(payload)
+
+    assert result.status == "skip"
+    assert result.reason == "low_confidence"
+    assert result.confidence == 0.59
+
+
+def test_actionable_strategy_at_confidence_threshold_is_allowed():
+    builder = RecommendationBuilder()
+    payload = _report(
+        trend="trend_up",
+        events=[{"type": "BOS", "side": "bullish"}],
+        strongest_support={"level_price": 95.0, "strength_score": 0.8},
+        strongest_resistance={"level_price": 105.0, "strength_score": 0.3},
+    )
+    payload["recommendation_basis"]["candidate_strategy"] = "trend"
+    payload["recommendation_basis"]["confidence_score"] = 0.6
+
+    result = builder.build(payload)
+
+    assert result.status == "ok"
+    assert result.strategy_type == "trend"
+    assert result.confidence == 0.6

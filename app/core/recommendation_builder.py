@@ -5,6 +5,7 @@ from typing import Any
 
 ALLOWED_STRUCTURE_EVENTS = {"bos", "choch"}
 EVENT_WINDOW = 5
+MIN_CONFIDENCE_TO_ACT = 0.6
 
 
 @dataclass(slots=True)
@@ -37,15 +38,25 @@ class RecommendationBuilder:
         if not basis.get("eligible_for_recommendation", False):
             return RecommendationResult(status="skip", reason="not_eligible")
 
-        candidate_strategy = basis.get("candidate_strategy") or "grid"
+        candidate_strategy = str(basis.get("candidate_strategy") or "grid")
         confidence = float(basis.get("confidence_score", 0.0))
+
+        actionable_strategies = {"grid", "range", "trend", "trend_follow"}
+        if candidate_strategy in actionable_strategies and confidence < MIN_CONFIDENCE_TO_ACT:
+            return RecommendationResult(
+                status="skip",
+                reason="low_confidence",
+                strategy_type="skip",
+                confidence=confidence,
+            )
+
         suggested_params = basis.get("suggested_bot_params")
         params: dict[str, Any] = {"source": "analysis_report"}
         if isinstance(suggested_params, dict):
             params.update(suggested_params)
         return RecommendationResult(
             status="ok",
-            strategy_type=str(candidate_strategy),
+            strategy_type=candidate_strategy,
             params=params,
             confidence=confidence,
         )
