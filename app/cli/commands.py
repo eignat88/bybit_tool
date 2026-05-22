@@ -264,7 +264,9 @@ def levels(
 
     if export_csv:
         csv_body = calc.to_tradingview_csv(result)
-        Path(export_csv).write_text(csv_body + "\n", encoding="utf-8")
+        export_path = Path(export_csv)
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        export_path.write_text(csv_body + "\n", encoding="utf-8")
         typer.echo(f"TradingView CSV exported to {export_csv}")
 
 
