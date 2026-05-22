@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from statistics import mean
 
 from sqlalchemy import delete, select
@@ -31,6 +32,8 @@ class LevelResult:
     percentile_rank: float = 0.0
     merged_from_count: int = 1
     is_cluster_primary: bool = True
+    event_open_time: datetime | None = None
+    event_age_candles: float | None = None
 
 
 class LevelsCalculator:
@@ -108,6 +111,8 @@ class LevelsCalculator:
                         cluster_strength=row.cluster_strength or row.strength_score,
                         merged_from_count=row.merged_from_count,
                         is_cluster_primary=row.is_cluster_primary,
+                        event_open_time=row.event_open_time,
+                        event_age_candles=row.event_age_candles,
                     )
                     for row in results
                 ]
@@ -218,7 +223,8 @@ class LevelsCalculator:
         source_bonus = self.SOURCE_PRIORITY.get(primary.source_type, 0) * 1.25
         touch_bonus = self._count_touches(candles, normalized_price, atr) * self.TOUCH_BONUS_FACTOR
         proximity_bonus = self._proximity_bonus(normalized_price, primary.source_type, all_levels, atr)
-        age_decay = self._age_decay_multiplier(candles, normalized_price)
+        age_candles = self._cluster_event_age_candles(cluster, candles)
+        age_decay = self._age_decay_multiplier_by_event(age_candles)
         spread_penalty = self._cluster_spread_penalty(cluster, normalized_price, atr)
 
         new_score = (weighted_score + cluster_size_bonus + source_bonus + touch_bonus + proximity_bonus)
@@ -250,6 +256,8 @@ class LevelsCalculator:
             raw_cluster_strength=round(new_score, 2),
             merged_from_count=len(cluster),
             is_cluster_primary=True,
+            event_open_time=self._cluster_newest_event_time(cluster),
+            event_age_candles=age_candles,
         )
 
     def _weighted_cluster_score(self, cluster: list[LevelResult]) -> float:
@@ -287,12 +295,31 @@ class LevelsCalculator:
         ]
         return len(strong_neighbors) * self.PROXIMITY_BONUS_FACTOR
 
-    def _age_decay_multiplier(self, candles: list[Candle], price: float) -> float:
-        for i, candle in enumerate(reversed(candles)):
-            if candle.low <= price <= candle.high:
-                age = i
-                return math.exp(-(age / max(self.DECAY_TAU_CANDLES, 1e-9)))
-        return 0.75
+    def _cluster_newest_event_time(self, cluster: list[LevelResult]) -> datetime | None:
+        timestamps = [lvl.event_open_time for lvl in cluster if lvl.event_open_time is not None]
+        return max(timestamps) if timestamps else None
+
+    def _cluster_event_age_candles(self, cluster: list[LevelResult], candles: list[Candle]) -> float:
+        if not candles:
+            return 0.0
+        last_open_time = candles[-1].open_time
+        weighted_age = 0.0
+        weight_total = 0.0
+        for level in cluster:
+            if level.event_open_time is None:
+                continue
+            age = max(0.0, float((last_open_time - level.event_open_time).total_seconds()))
+            weight = self.SOURCE_WEIGHT.get(self._weight_source_group(level.source_type), 1.0)
+            weighted_age += age * weight
+            weight_total += weight
+        if weight_total <= 0.0:
+            return 0.0
+        avg_age_seconds = weighted_age / weight_total
+        candle_seconds = max(1.0, float((candles[-1].open_time - candles[-2].open_time).total_seconds())) if len(candles) > 1 else 1.0
+        return avg_age_seconds / candle_seconds
+
+    def _age_decay_multiplier_by_event(self, age_candles: float) -> float:
+        return math.exp(-(max(0.0, age_candles) / max(self.DECAY_TAU_CANDLES, 1e-9)))
 
     def _detect_swings(self, candles: list[Candle], avg_range: float) -> list[LevelResult]:
         swings: list[LevelResult] = []
@@ -303,10 +330,28 @@ class LevelsCalculator:
             right = candles[i + 1 : i + 1 + w]
             if all(center.high > c.high for c in left + right):
                 score = min(100.0, 45.0 + (center.high - max(c.high for c in left + right)) / max(avg_range, 1e-9) * 12.0)
-                swings.append(LevelResult(center.high, "resistance", "swing_high", "Liquidity swing high", round(score, 2)))
+                swings.append(
+                    LevelResult(
+                        center.high,
+                        "resistance",
+                        "swing_high",
+                        "Liquidity swing high",
+                        round(score, 2),
+                        event_open_time=center.open_time,
+                    )
+                )
             if all(center.low < c.low for c in left + right):
                 score = min(100.0, 45.0 + (min(c.low for c in left + right) - center.low) / max(avg_range, 1e-9) * 12.0)
-                swings.append(LevelResult(center.low, "support", "swing_low", "Liquidity swing low", round(score, 2)))
+                swings.append(
+                    LevelResult(
+                        center.low,
+                        "support",
+                        "swing_low",
+                        "Liquidity swing low",
+                        round(score, 2),
+                        event_open_time=center.open_time,
+                    )
+                )
         return swings[-self.MAX_LEVELS_PER_SOURCE :]
 
     def _detect_bos_choch(self, candles: list[Candle], avg_range: float) -> list[LevelResult]:
@@ -319,12 +364,30 @@ class LevelsCalculator:
                 source = "bos" if trend >= 0 else "choch"
                 trend = 1
                 score = min(100.0, 55.0 + (c.close - recent_high) / max(avg_range, 1e-9) * 15.0)
-                levels.append(LevelResult(recent_high, "support", source, f"{source.upper()} up confirmed by close breakout", round(score, 2)))
+                levels.append(
+                    LevelResult(
+                        recent_high,
+                        "support",
+                        source,
+                        f"{source.upper()} up confirmed by close breakout",
+                        round(score, 2),
+                        event_open_time=c.open_time,
+                    )
+                )
             if c.close < recent_low:
                 source = "bos" if trend <= 0 else "choch"
                 trend = -1
                 score = min(100.0, 55.0 + (recent_low - c.close) / max(avg_range, 1e-9) * 15.0)
-                levels.append(LevelResult(recent_low, "resistance", source, f"{source.upper()} down confirmed by close breakout", round(score, 2)))
+                levels.append(
+                    LevelResult(
+                        recent_low,
+                        "resistance",
+                        source,
+                        f"{source.upper()} down confirmed by close breakout",
+                        round(score, 2),
+                        event_open_time=c.open_time,
+                    )
+                )
             recent_high = max(recent_high, c.high)
             recent_low = min(recent_low, c.low)
         return levels[-self.MAX_LEVELS_PER_SOURCE :]
@@ -343,14 +406,32 @@ class LevelsCalculator:
                     logger.debug("[LEVEL_NORMALIZER] fvg filtered type=bull gap=%.4f", gap)
                     continue
                 score = min(100.0, 50.0 + gap / max(avg_range, 1e-9) * 18.0)
-                fvgs.append(LevelResult((c2.low + c0.high) / 2.0, "support", "fvg", "Bullish FVG midpoint", round(score, 2)))
+                fvgs.append(
+                    LevelResult(
+                        (c2.low + c0.high) / 2.0,
+                        "support",
+                        "fvg",
+                        "Bullish FVG midpoint",
+                        round(score, 2),
+                        event_open_time=c2.open_time,
+                    )
+                )
             elif c2.high < c0.low:
                 gap = c0.low - c2.high
                 if not self._fvg_passes_filters(gap, atr, displacement, avg_range, c1.volume, avg_volume):
                     logger.debug("[LEVEL_NORMALIZER] fvg filtered type=bear gap=%.4f", gap)
                     continue
                 score = min(100.0, 50.0 + gap / max(avg_range, 1e-9) * 18.0)
-                fvgs.append(LevelResult((c2.high + c0.low) / 2.0, "resistance", "fvg", "Bearish FVG midpoint", round(score, 2)))
+                fvgs.append(
+                    LevelResult(
+                        (c2.high + c0.low) / 2.0,
+                        "resistance",
+                        "fvg",
+                        "Bearish FVG midpoint",
+                        round(score, 2),
+                        event_open_time=c2.open_time,
+                    )
+                )
         return fvgs[-self.MAX_LEVELS_PER_SOURCE :]
 
     def _fvg_passes_filters(

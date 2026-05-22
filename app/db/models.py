@@ -89,6 +89,8 @@ class Level(Base):
     cluster_strength: Mapped[float | None] = mapped_column(Float, nullable=True)
     merged_from_count: Mapped[int] = mapped_column(Integer, default=1)
     is_cluster_primary: Mapped[bool] = mapped_column(Boolean, default=True)
+    event_open_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    event_age_candles: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class AnalysisReport(Base):
