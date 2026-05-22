@@ -130,10 +130,18 @@ def build_recommendation(
     if report is None:
         report = db.execute(
             select(AnalysisReport)
-            .where(AnalysisReport.symbol == normalized_symbol)
+            .where(AnalysisReport.symbol == normalized_symbol, AnalysisReport.market_type == market_type)
             .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
             .limit(1)
         ).scalar_one_or_none()
+    if report is None:
+        if source_report_id is not None:
+            raise DataNotFoundWarning(
+                f"analysis_report_not_found_for_id_or_symbol_market_type: source_report_id={source_report_id} symbol={normalized_symbol} market_type={market_type}"
+            )
+        raise DataNotFoundWarning(
+            f"analysis_report_not_found_for_symbol_market_type: symbol={normalized_symbol} market_type={market_type}"
+        )
 
     scan = db.execute(
         select(ScanResult).where(ScanResult.symbol == normalized_symbol).order_by(ScanResult.id.desc()).limit(1)

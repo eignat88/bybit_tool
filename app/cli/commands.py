@@ -354,14 +354,21 @@ def analyze(
 
     if recommend:
         intervals_list, _ = normalize_intervals(payload["timeframes"])
-        with SessionLocal() as db:
-            rec = build_recommendation(
-                db=db,
-                symbol=normalized_symbol,
-                market_type=market_type,
-                intervals=intervals_list,
-                source_report_id=report.id,
+        try:
+            with SessionLocal() as db:
+                rec = build_recommendation(
+                    db=db,
+                    symbol=normalized_symbol,
+                    market_type=market_type,
+                    intervals=intervals_list,
+                    source_report_id=report.id,
+                )
+        except DomainError as exc:
+            typer.echo(
+                f"recommendation skipped for symbol={normalized_symbol} market_type={market_type}: {exc}",
+                err=True,
             )
+            raise typer.Exit(code=2) from exc
         typer.echo(f"Recommendation saved: id={rec.id}")
         typer.echo(f"symbol={rec.symbol}")
         typer.echo(f"strategy_type={rec.strategy_type}")
@@ -376,8 +383,20 @@ def recommend(
 ) -> None:
     normalized_symbol = symbol.upper()
     interval_list = validate_intervals_csv(intervals)
-    with SessionLocal() as db:
-        rec = build_recommendation(db=db, symbol=normalized_symbol, market_type=market_type, intervals=interval_list)
+    try:
+        with SessionLocal() as db:
+            rec = build_recommendation(
+                db=db,
+                symbol=normalized_symbol,
+                market_type=market_type,
+                intervals=interval_list,
+            )
+    except DomainError as exc:
+        typer.echo(
+            f"recommendation failed for symbol={normalized_symbol} market_type={market_type}: {exc}",
+            err=True,
+        )
+        raise typer.Exit(code=2) from exc
 
     typer.echo(f"Recommendation saved: id={rec.id}")
     typer.echo(f"symbol={rec.symbol}")
