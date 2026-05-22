@@ -41,7 +41,8 @@ class LevelsCalculator:
     CLUSTER_PERCENT_THRESHOLD = 0.0015
 
     SOURCE_PRIORITY = {"choch": 4, "bos": 3, "swing_high": 2, "swing_low": 2, "fvg": 1}
-    SOURCE_STRENGTH_MULTIPLIER = {"choch": 1.25, "bos": 1.15, "swing_high": 1.05, "swing_low": 1.05, "fvg": 0.9}
+    SOURCE_STRENGTH_MULTIPLIER = {"choch": 1.15, "bos": 1.1, "swing_high": 1.03, "swing_low": 1.03, "fvg": 0.88}
+    SOURCE_WEIGHT = {"choch": 1.35, "bos": 1.2, "swing_high": 1.0, "swing_low": 1.0, "fvg": 0.65}
 
     FVG_MIN_GAP_SIZE = 5.0
     FVG_ATR_MIN_FACTOR = 0.08
@@ -49,11 +50,12 @@ class LevelsCalculator:
     FVG_USE_VOLUME_CONFIRMATION = False
     FVG_VOLUME_FACTOR = 1.3
 
-    CLUSTER_SIZE_BONUS_FACTOR = 4.0
+    CLUSTER_SIZE_BONUS_FACTOR = 9.0
     TOUCH_BONUS_FACTOR = 1.8
     PROXIMITY_BONUS_FACTOR = 2.2
     PROXIMITY_DISTANCE_FACTOR = 1.8
     DECAY_TAU_CANDLES = 120.0
+    CLUSTER_SPREAD_PENALTY_FACTOR = 1.4
 
     def calculate(self, symbol: str, interval: str, market_type: str = "linear") -> list[LevelResult]:
         symbol_u = symbol.upper()
@@ -170,16 +172,18 @@ class LevelsCalculator:
         primary = max(cluster, key=lambda x: (self.SOURCE_PRIORITY.get(x.source_type, 0), x.strength_score))
         normalized_price = mean(x.level_price for x in cluster)
         merged_sources = sorted({x.source_type for x in cluster})
-        base_score = mean(x.strength_score for x in cluster)
-        cluster_size_bonus = (len(cluster) - 1) * self.CLUSTER_SIZE_BONUS_FACTOR
-        source_bonus = self.SOURCE_PRIORITY.get(primary.source_type, 0) * 2.5
+        weighted_score = self._weighted_cluster_score(cluster)
+        cluster_size_bonus = math.log1p(max(0, len(cluster) - 1)) * self.CLUSTER_SIZE_BONUS_FACTOR
+        source_bonus = self.SOURCE_PRIORITY.get(primary.source_type, 0) * 1.25
         touch_bonus = self._count_touches(candles, normalized_price, atr) * self.TOUCH_BONUS_FACTOR
         proximity_bonus = self._proximity_bonus(normalized_price, primary.source_type, all_levels, atr)
         age_decay = self._age_decay_multiplier(candles, normalized_price)
+        spread_penalty = self._cluster_spread_penalty(cluster, normalized_price, atr)
 
-        new_score = (base_score + cluster_size_bonus + source_bonus + touch_bonus + proximity_bonus)
+        new_score = (weighted_score + cluster_size_bonus + source_bonus + touch_bonus + proximity_bonus)
         new_score *= self.SOURCE_STRENGTH_MULTIPLIER.get(primary.source_type, 1.0)
         new_score *= age_decay
+        new_score *= spread_penalty
         new_score = max(0.0, min(100.0, new_score))
 
         logger.debug(
@@ -206,6 +210,25 @@ class LevelsCalculator:
             is_cluster_primary=True,
         )
 
+    def _weighted_cluster_score(self, cluster: list[LevelResult]) -> float:
+        weighted_sum = 0.0
+        weight_total = 0.0
+        for level in cluster:
+            weight = self.SOURCE_WEIGHT.get(level.source_type, 1.0)
+            weighted_sum += level.strength_score * weight
+            weight_total += weight
+        if weight_total <= 0.0:
+            return mean(x.strength_score for x in cluster)
+        return weighted_sum / weight_total
+
+    def _cluster_spread_penalty(self, cluster: list[LevelResult], center_price: float, atr: float) -> float:
+        if len(cluster) <= 1:
+            return 1.0
+        spread = max(x.level_price for x in cluster) - min(x.level_price for x in cluster)
+        reference = max(self._cluster_distance_threshold(center_price, atr), 1e-9)
+        ratio = spread / reference
+        return 1.0 / (1.0 + max(0.0, ratio - 1.0) * self.CLUSTER_SPREAD_PENALTY_FACTOR)
+
     def _count_touches(self, candles: list[Candle], price: float, atr: float) -> int:
         threshold = max(atr * 0.1, price * 0.0005)
         return sum(1 for c in candles if c.low <= price + threshold and c.high >= price - threshold)
@@ -222,7 +245,7 @@ class LevelsCalculator:
             if candle.low <= price <= candle.high:
                 age = i
                 return math.exp(-(age / max(self.DECAY_TAU_CANDLES, 1e-9)))
-        return 1.0
+        return 0.75
 
     def _detect_swings(self, candles: list[Candle], avg_range: float) -> list[LevelResult]:
         swings: list[LevelResult] = []
