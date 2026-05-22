@@ -14,7 +14,7 @@ class Symbol(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(30), index=True)
-    market_type: Mapped[str] = mapped_column(String(10), default="linear", index=True)
+    market_type: Mapped[str] = mapped_column(String(10), default="linear", nullable=False, index=True)
     base_coin: Mapped[str] = mapped_column(String(20), default="")
     quote_coin: Mapped[str] = mapped_column(String(20), default="")
     status: Mapped[str] = mapped_column(String(20), default="")
@@ -42,7 +42,7 @@ class Candle(Base):
     close: Mapped[float] = mapped_column(Float)
     volume: Mapped[float] = mapped_column(Float)
     turnover: Mapped[float] = mapped_column(Float)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
 class ScanRun(Base):
@@ -77,7 +77,7 @@ class Level(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(30), index=True)
-    market_type: Mapped[str] = mapped_column(String(10), default="linear", index=True)
+    market_type: Mapped[str] = mapped_column(String(10), default="linear", nullable=False, index=True)
     interval: Mapped[str] = mapped_column(String(10), index=True)
     level_price: Mapped[float] = mapped_column(Float)
     level_type: Mapped[str] = mapped_column(String(30), index=True)
