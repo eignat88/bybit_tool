@@ -13,7 +13,7 @@ from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.levels_calculator import LevelsCalculator
 from app.core.indicator_store import IndicatorStore
-from app.core.intervals import validate_intervals_csv
+from app.core.intervals import normalize_intervals, validate_intervals_csv
 from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
@@ -345,7 +345,8 @@ def analyze(
     typer.echo(markdown)
     typer.echo("")
     typer.echo(f"report_id={report.id}")
-    typer.echo(f"timeframes={','.join(payload['timeframes'])}")
+    _, timeframe_set = normalize_intervals(payload['timeframes'])
+    typer.echo(f"timeframes={timeframe_set}")
 
 
 @app.command("db-check")

@@ -25,3 +25,27 @@ def validate_intervals_csv(intervals: str) -> list[str]:
     if unsupported:
         raise ValueError(f"Unsupported intervals: {','.join(unsupported)}")
     return interval_list
+
+
+
+def normalize_intervals(intervals: list[str]) -> tuple[list[str], str]:
+    if not intervals:
+        raise ValueError("intervals must not be empty")
+
+    raw: list[str] = []
+    for item in intervals:
+        for chunk in item.split(","):
+            val = chunk.strip().upper()
+            if val:
+                raw.append(val)
+
+    if not raw:
+        raise ValueError("intervals must not be empty")
+
+    unsupported = [item for item in raw if item not in INTERVAL_TO_MS]
+    if unsupported:
+        raise ValueError(f"Unsupported intervals: {','.join(unsupported)}")
+
+    unique = list(dict.fromkeys(raw))
+    normalized = sorted(unique, key=lambda x: INTERVAL_TO_MS[x], reverse=True)
+    return normalized, ",".join(normalized)

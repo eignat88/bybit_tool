@@ -13,6 +13,7 @@ from app.config.settings import settings
 from app.core.bybit_client import BybitClient
 from app.core.derivatives import DerivativesAnalyzer
 from app.core.indicators import calculate_indicators
+from app.core.intervals import normalize_intervals
 from app.core.market_structure import build_market_structure, parse_timeframes_csv
 from app.db.models import AnalysisReport, Candle, IndicatorValue, Level, ScanResult, ScanRun
 
@@ -419,7 +420,7 @@ def build_recommendation_basis(*, risk_summary: dict[str, Any], nearest_levels: 
 
 
 def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, intervals: str, market_type: str = settings.default_market_type) -> tuple[AnalysisReport, dict[str, Any], str]:
-    normalized_intervals = parse_timeframes_csv(intervals)
+    normalized_intervals, timeframe_set = normalize_intervals(parse_timeframes_csv(intervals))
     derivatives = DerivativesAnalyzer(client=client, market_type=market_type).analyze(symbol)
 
     market_structure: dict[str, Any] = {}
@@ -496,7 +497,7 @@ def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, inte
         "recommendation_basis": recommendation_basis,
     }
 
-    report = AnalysisReport(symbol=symbol, timeframe_set=",".join(normalized_intervals), report_json=payload)
+    report = AnalysisReport(symbol=symbol, timeframe_set=timeframe_set, report_json=payload)
     db.add(report)
     db.commit()
     db.refresh(report)
