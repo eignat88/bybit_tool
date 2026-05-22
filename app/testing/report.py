@@ -15,6 +15,14 @@ def render_lines(report: SelfTestReport) -> list[str]:
         lines.append(f"[{status}] {r.name}: {r.message}")
         for d in r.details:
             lines.append(f"  - {d}")
+    lines.append(f"SELF_TEST_RESULT={'OK' if report.success else 'FAIL'}")
+    if not report.success:
+        lines.append("failed_checks:")
+        for r in report.results:
+            if not r.ok:
+                lines.append(f"- {r.name} {r.message}")
+                for d in r.details:
+                    lines.append(f"- {r.name} {d}")
     return lines
 
 
