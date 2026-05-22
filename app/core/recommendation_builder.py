@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.domain_errors import DataNotFoundWarning, RecommendationInputError
+
 ALLOWED_STRUCTURE_EVENTS = {"bos", "choch"}
 EVENT_WINDOW = 5
 MIN_CONFIDENCE_TO_ACT = 0.6
@@ -12,6 +14,7 @@ MIN_CONFIDENCE_TO_ACT = 0.6
 class RecommendationResult:
     status: str
     reason: str | None = None
+    warnings: list[str] | None = None
     strategy_type: str | None = None
     params: dict[str, Any] | None = None
     confidence: float | None = None
@@ -22,18 +25,29 @@ class RecommendationBuilder:
 
     def build(self, report_payload: dict[str, Any] | None) -> RecommendationResult:
         if not report_payload:
-            return RecommendationResult(status="skip", reason="no_analysis_report")
+            raise DataNotFoundWarning("no_analysis_report")
+
+        if not isinstance(report_payload, dict):
+            raise RecommendationInputError("report_payload must be a JSON object")
 
         basis = report_payload.get("recommendation_basis")
         if not isinstance(basis, dict):
-            return RecommendationResult(status="skip", reason="no_recommendation_basis")
+            return RecommendationResult(
+                status="skip",
+                reason="no_recommendation_basis",
+                warnings=["recommendation_basis_missing"],
+            )
 
         direction = self._read_direction(report_payload, basis)
         if direction is None:
-            return RecommendationResult(status="skip", reason="no_direction")
+            return RecommendationResult(status="skip", reason="no_direction", warnings=["direction_not_available"])
 
         if not self._direction_confirmed(report_payload, basis, direction):
-            return RecommendationResult(status="skip", reason="direction_not_confirmed")
+            return RecommendationResult(
+                status="skip",
+                reason="direction_not_confirmed",
+                warnings=["structure_or_level_confirmation_missing"],
+            )
 
         if not basis.get("eligible_for_recommendation", False):
             return RecommendationResult(status="skip", reason="not_eligible")

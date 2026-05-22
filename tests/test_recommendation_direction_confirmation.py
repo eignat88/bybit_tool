@@ -1,4 +1,6 @@
 from app.core.recommendation_builder import RecommendationBuilder
+from app.core.domain_errors import DataNotFoundWarning
+import pytest
 
 
 def _report(*, trend: str, events: list[dict], strongest_support: dict | None, strongest_resistance: dict | None):
@@ -92,3 +94,9 @@ def test_actionable_strategy_at_confidence_threshold_is_allowed():
     assert result.status == "ok"
     assert result.strategy_type == "trend"
     assert result.confidence == 0.6
+
+
+def test_empty_payload_raises_data_not_found_warning():
+    builder = RecommendationBuilder()
+    with pytest.raises(DataNotFoundWarning):
+        builder.build(None)

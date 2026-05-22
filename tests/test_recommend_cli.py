@@ -39,6 +39,21 @@ def test_recommend_without_analysis_report_exits_gracefully(monkeypatch):
     assert "Traceback" not in result.stdout
 
 
+def test_analyze_with_invalid_interval_exits_with_readable_error(monkeypatch):
+    def _raise_invalid(*_args, **_kwargs):
+        raise ValueError("Unsupported intervals: X1")
+
+    monkeypatch.setattr("app.cli.commands.build_analysis_report", _raise_invalid)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["analyze", "BTCUSDT", "--intervals", "X1"])
+
+    assert result.exit_code == 2
+    assert "Unsupported intervals: X1" in result.stderr
+    assert "Traceback" not in result.stdout
+    assert "Traceback" not in result.stderr
+
+
 def test_recommend_backward_compatible_without_market_type_column(monkeypatch, tmp_path):
     import json
     from datetime import datetime, timezone
