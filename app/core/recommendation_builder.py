@@ -29,9 +29,13 @@ class RecommendationBuilder:
 
         candidate_strategy = basis.get("candidate_strategy") or "grid"
         confidence = float(basis.get("confidence_score", 0.0))
+        suggested_params = basis.get("suggested_bot_params")
+        params: dict[str, Any] = {"source": "analysis_report"}
+        if isinstance(suggested_params, dict):
+            params.update(suggested_params)
         return RecommendationResult(
             status="ok",
             strategy_type=str(candidate_strategy),
-            params={"source": "analysis_report"},
+            params=params,
             confidence=confidence,
         )
