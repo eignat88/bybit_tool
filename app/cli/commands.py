@@ -18,7 +18,9 @@ from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.core.report_builder import build_analysis_report
+from app.core.recommendation_builder import RecommendationBuilder
 from app.db.models import Candle, Symbol
+from app.db.models import AnalysisReport, BotRecommendation
 from app.db.repository import SessionLocal, init_db, migrate_db
 
 from app.testing.db_validation import get_missing_levels_columns, validate_db_objects
@@ -347,6 +349,47 @@ def analyze(
     typer.echo(f"report_id={report.id}")
     _, timeframe_set = normalize_intervals(payload['timeframes'])
     typer.echo(f"timeframes={timeframe_set}")
+
+
+@app.command("recommend")
+def recommend(
+    symbol: str,
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
+) -> None:
+    normalized_symbol = symbol.upper()
+    with SessionLocal() as db:
+        latest_report = db.execute(
+            select(AnalysisReport)
+            .where(AnalysisReport.symbol == normalized_symbol)
+            .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if latest_report is None:
+            typer.echo(
+                "No analysis report found. Run: "
+                f"python main.py analyze {normalized_symbol} --market-type {market_type} --recommend"
+            )
+            raise typer.Exit(code=0)
+
+        result = RecommendationBuilder().build(latest_report.report_json)
+        if result.status == "skip":
+            typer.echo(f"Recommendation skipped: reason={result.reason}")
+            raise typer.Exit(code=0)
+
+        recommendation = BotRecommendation(
+            symbol=normalized_symbol,
+            strategy_type=result.strategy_type or "grid",
+            params_json=json.dumps(result.params or {}),
+            confidence=result.confidence or 0.0,
+            source_report_id=latest_report.id,
+        )
+        db.add(recommendation)
+        db.commit()
+        typer.echo(
+            f"recommendation_id={recommendation.id} symbol={recommendation.symbol} "
+            f"strategy={recommendation.strategy_type} confidence={recommendation.confidence:.2f}"
+        )
 
 
 @app.command("db-check")
