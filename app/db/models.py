@@ -138,6 +138,7 @@ class BotRecommendation(Base):
     confidence: Mapped[float] = mapped_column(Float, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     source_report_id: Mapped[int | None] = mapped_column(ForeignKey("analysis_reports.id"), nullable=True, index=True)
+    market_type: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
 
 
 class ApiRequestLog(Base):

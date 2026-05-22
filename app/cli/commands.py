@@ -377,18 +377,23 @@ def recommend(
             typer.echo(f"Recommendation skipped: reason={result.reason}")
             raise typer.Exit(code=0)
 
-        recommendation = BotRecommendation(
-            symbol=normalized_symbol,
-            strategy_type=result.strategy_type or "grid",
-            params_json=json.dumps(result.params or {}),
-            confidence=result.confidence or 0.0,
-            source_report_id=latest_report.id,
-        )
-        db.add(recommendation)
+        recommendation_payload: dict[str, object] = {
+            "symbol": normalized_symbol,
+            "strategy_type": result.strategy_type or "grid",
+            "params_json": json.dumps(result.params or {}),
+            "confidence": result.confidence or 0.0,
+            "source_report_id": latest_report.id,
+        }
+        recommendation_columns = {column["name"] for column in sa.inspect(db.bind).get_columns("bot_recommendations")}
+        if "market_type" in recommendation_columns:
+            recommendation_payload["market_type"] = market_type
+
+        insert_result = db.execute(sa.insert(BotRecommendation.__table__).values(**recommendation_payload))
         db.commit()
+        recommendation_id = insert_result.inserted_primary_key[0] if insert_result.inserted_primary_key else None
         typer.echo(
-            f"recommendation_id={recommendation.id} symbol={recommendation.symbol} "
-            f"strategy={recommendation.strategy_type} confidence={recommendation.confidence:.2f}"
+            f"recommendation_id={recommendation_id} symbol={normalized_symbol} "
+            f"strategy={recommendation_payload['strategy_type']} confidence={float(recommendation_payload['confidence']):.2f}"
         )
 
 
