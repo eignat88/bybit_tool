@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import inspect
+from sqlalchemy import UniqueConstraint, inspect
 
 from app.db.models import Base
 from app.db.repository import engine
@@ -60,9 +60,16 @@ def validate_db_objects() -> list[CheckResult]:
         db_indexes = {idx["name"] for idx in inspector.get_indexes(t) if idx.get("name")}
         missing_indexes = sorted(model_indexes - db_indexes)
 
-        model_uq = {c.name for c in table.constraints if c.__class__.__name__ == "UniqueConstraint" and c.name}
-        db_uq = {c["name"] for c in inspector.get_unique_constraints(t) if c.get("name")}
-        missing_uq = sorted(model_uq - db_uq)
+        model_uq = {c.name for c in table.constraints if isinstance(c, UniqueConstraint) and c.name}
+        db_uq_meta = inspector.get_unique_constraints(t)
+        db_uq_names = {c["name"] for c in db_uq_meta if c.get("name")}
+        missing_uq = sorted(model_uq - db_uq_names)
+
+        # Canonicalize symbols(symbol, market_type) unique constraint even when DB name differs.
+        if t == "symbols" and "uq_symbol_market_type" in missing_uq:
+            has_equivalent = any(tuple(uq.get("column_names") or []) == ("symbol", "market_type") for uq in db_uq_meta)
+            if has_equivalent:
+                missing_uq.remove("uq_symbol_market_type")
 
         ok = not missing_indexes and not missing_uq
         details = [f"missing index: {x}" for x in missing_indexes] + [f"missing unique: {x}" for x in missing_uq]
