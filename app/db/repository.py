@@ -17,3 +17,8 @@ def init_db() -> None:
     cfg = Config(str(alembic_ini))
     cfg.set_main_option("sqlalchemy.url", settings.db_url)
     command.upgrade(cfg, "head")
+
+
+def migrate_db() -> None:
+    """Apply Alembic migrations up to head."""
+    init_db()
