@@ -283,6 +283,49 @@ def build_scanner_summary(*, db: Session, symbol: str, primary_interval: str, ma
     }
 
 
+def collect_market_metrics(*, nearest_levels: dict[str, Any], scanner_summary: dict[str, Any], indicator_snapshot: dict[str, Any]) -> dict[str, Any]:
+    primary_interval = nearest_levels.get("primary_interval")
+    indicator_data = indicator_snapshot.get(primary_interval, {}) if primary_interval else {}
+
+    def _pick(field: str) -> tuple[float | None, str]:
+        scan_value = scanner_summary.get(field)
+        if scan_value is not None:
+            return scan_value, "scan_result"
+        indicator_value = indicator_data.get(field)
+        if indicator_value is not None:
+            return indicator_value, "indicator_values"
+        return None, "unavailable"
+
+    price = scanner_summary.get("price")
+    price_source = "scan_result"
+    if price is None:
+        price = nearest_levels.get("latest_close")
+        price_source = "candles.close" if price is not None else "unavailable"
+
+    atr_pct, atr_source = _pick("atr_pct")
+    rsi, rsi_source = _pick("rsi")
+    adx, adx_source = _pick("adx")
+    vwap_dev, vwap_source = _pick("vwap_deviation_pct")
+    bb_width, bb_width_source = _pick("bb_width_pct")
+
+    return {
+        "price": _round(price),
+        "atr_pct": _round(atr_pct),
+        "rsi": _round(rsi),
+        "adx": _round(adx),
+        "vwap_deviation_pct": _round(vwap_dev),
+        "bb_width_pct": _round(bb_width),
+        "data_sources": {
+            "price": price_source,
+            "atr_pct": atr_source,
+            "rsi": rsi_source,
+            "adx": adx_source,
+            "vwap_deviation_pct": vwap_source,
+            "bb_width_pct": bb_width_source,
+        },
+    }
+
+
 def build_risk_summary(*, nearest_levels: dict[str, Any], indicator_snapshot: dict[str, Any], scanner_summary: dict[str, Any]) -> dict[str, Any]:
     warnings: list[str] = []
     primary_interval = nearest_levels.get("primary_interval")
@@ -364,7 +407,9 @@ def build_risk_summary(*, nearest_levels: dict[str, Any], indicator_snapshot: di
     }
 
 
-def build_recommendation_basis(*, risk_summary: dict[str, Any], nearest_levels: dict[str, Any], levels_summary: dict[str, Any]) -> dict[str, Any]:
+def build_recommendation_basis(
+    *, risk_summary: dict[str, Any], nearest_levels: dict[str, Any], levels_summary: dict[str, Any], market_metrics: dict[str, Any]
+) -> dict[str, Any]:
     blocking_factors: list[str] = []
     if risk_summary.get("data_quality") == "bad":
         blocking_factors.append("data quality is bad")
@@ -377,7 +422,7 @@ def build_recommendation_basis(*, risk_summary: dict[str, Any], nearest_levels: 
     if risk_summary.get("overall_risk") == "high":
         blocking_factors.append("overall_risk is high")
 
-    atr_pct = nearest_levels.get("atr_pct")
+    atr_pct = market_metrics.get("atr_pct")
     if atr_pct is None:
         blocking_factors.append("atr_pct is unavailable")
     elif atr_pct < MIN_ATR_PCT:
@@ -434,6 +479,15 @@ def build_recommendation_basis(*, risk_summary: dict[str, Any], nearest_levels: 
             "upper_bound": (nearest_levels.get("nearest_resistance") or {}).get("level_price"),
             "reference_interval": primary_interval,
             "risk_profile": overall_risk,
+            "market_metrics": {
+                "price": market_metrics.get("price"),
+                "atr_pct": atr_pct,
+                "rsi": market_metrics.get("rsi"),
+                "adx": market_metrics.get("adx"),
+                "vwap_deviation_pct": market_metrics.get("vwap_deviation_pct"),
+                "bb_width_pct": market_metrics.get("bb_width_pct"),
+            },
+            "data_sources": market_metrics.get("data_sources", {}),
         },
     }
 
@@ -487,10 +541,16 @@ def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, inte
         indicator_snapshot=indicator_snapshot,
         scanner_summary=scanner_summary,
     )
+    market_metrics = collect_market_metrics(
+        nearest_levels=nearest_levels,
+        scanner_summary=scanner_summary,
+        indicator_snapshot=indicator_snapshot,
+    )
     recommendation_basis = build_recommendation_basis(
         risk_summary=risk_summary,
         nearest_levels=nearest_levels,
         levels_summary=levels_summary,
+        market_metrics=market_metrics,
     )
 
     payload: dict[str, Any] = {

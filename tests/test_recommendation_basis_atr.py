@@ -3,6 +3,15 @@ from app.core.scoring import MAX_ATR_PCT, MIN_ATR_PCT
 
 
 def _payload(atr_pct: float):
+    market_metrics = {
+        "atr_pct": atr_pct,
+        "rsi": 50.0,
+        "adx": 20.0,
+        "price": 100.0,
+        "vwap_deviation_pct": 0.1,
+        "bb_width_pct": 1.0,
+        "data_sources": {"atr_pct": "scan_result"},
+    }
     return build_recommendation_basis(
         risk_summary={"data_quality": "ok", "overall_risk": "low", "trend_strength": "weak", "scanner_risk": "low"},
         nearest_levels={
@@ -10,9 +19,9 @@ def _payload(atr_pct: float):
             "nearest_support": {"level_price": 95.0},
             "nearest_resistance": {"level_price": 105.0},
             "primary_interval": "60",
-            "atr_pct": atr_pct,
         },
         levels_summary={"60": {"has_bos": False}},
+        market_metrics=market_metrics,
     )
 
 
