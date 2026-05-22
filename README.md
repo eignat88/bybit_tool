@@ -130,3 +130,48 @@ python main.py db-stats
 python main.py candles --symbol BTCUSDT --interval 60 --limit 10
 ```
 Выводит последние N свечей по инструменту и таймфрейму для быстрой ручной проверки.
+
+## JSONB report filtering patterns (`analysis_reports.report_json`)
+После миграции `20260522_0008` поле `analysis_reports.report_json` хранится в типе `jsonb` и покрывается:
+- GIN-индексом по всему документу: `ix_analysis_reports_report_json_gin`.
+- Expression-индексами по приоритетным фильтрам:
+  - `ix_analysis_reports_market_type_expr` → `(report_json ->> 'market_type')`
+  - `ix_analysis_reports_overall_risk_expr` → `(report_json ->> 'overall_risk')`
+  - `ix_analysis_reports_candidate_strategy_expr` → `(report_json ->> 'candidate_strategy')`
+  - `ix_analysis_reports_eligible_for_recommendation_expr` → `(report_json ->> 'eligible_for_recommendation')`
+
+Рекомендуемые SQL-паттерны:
+
+```sql
+-- 1) Точное совпадение по приоритетным полям (использует expression-индексы)
+SELECT id, symbol, market_type, created_at
+FROM analysis_reports
+WHERE (report_json ->> 'market_type') = 'linear'
+  AND (report_json ->> 'overall_risk') = 'low'
+  AND (report_json ->> 'candidate_strategy') = 'grid';
+```
+
+```sql
+-- 2) Фильтр по булевому флагу из JSON
+SELECT id, symbol, created_at
+FROM analysis_reports
+WHERE (report_json ->> 'eligible_for_recommendation') = 'true';
+```
+
+```sql
+-- 3) Контеймент/поиск по JSON-структуре (использует GIN по report_json)
+SELECT id, symbol, created_at
+FROM analysis_reports
+WHERE report_json @> '{"market_type":"linear","overall_risk":"low"}'::jsonb;
+```
+
+```sql
+-- 4) Комбинированный вариант: быстрый pre-filter по expression + JSON containment
+SELECT id, symbol, created_at
+FROM analysis_reports
+WHERE (report_json ->> 'market_type') = 'linear'
+  AND report_json @> '{"eligible_for_recommendation":true}'::jsonb;
+```
+
+Практика: для точных фильтров по ключам верхнего уровня предпочтительно использовать `->>` в `WHERE`,
+а для поиска фрагментов JSON-документа и сложных условий по вложенным объектам — `@>`/JSONB-операторы.
