@@ -16,9 +16,9 @@ from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.core.report_builder import build_analysis_report
 from app.db.models import Candle, Symbol
-from app.db.repository import SessionLocal, init_db
+from app.db.repository import SessionLocal, init_db, migrate_db
 
-from app.testing.db_validation import validate_db_objects
+from app.testing.db_validation import get_missing_levels_columns, validate_db_objects
 from app.testing.report import render_lines
 from app.testing.smoke_tests import run_self_test
 
@@ -37,6 +37,17 @@ def init_db_command() -> None:
         typer.echo(f"init-db failed: {type(exc).__name__}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     typer.echo("Database schema initialized via alembic upgrade head")
+
+
+@app.command("migrate-db")
+def migrate_db_command() -> None:
+    """Apply Alembic migrations up to head."""
+    try:
+        migrate_db()
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"migrate-db failed: {type(exc).__name__}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo("Database migrations applied via alembic upgrade head")
 
 
 @app.command("load")
@@ -288,6 +299,17 @@ def analyze(
 
 @app.command("db-check")
 def db_check() -> None:
+    missing_levels_columns = get_missing_levels_columns()
+    if missing_levels_columns:
+        typer.echo("DB schema is outdated.")
+        typer.echo("Missing columns in levels:")
+        for column_name in missing_levels_columns:
+            typer.echo(f"- {column_name}")
+        typer.echo("")
+        typer.echo("Run:")
+        typer.echo("python main.py migrate-db")
+        raise typer.Exit(code=1)
+
     results = validate_db_objects()
     from app.testing.cli_validation import validate_market_type_consistency
 

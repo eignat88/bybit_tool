@@ -86,7 +86,7 @@ class Level(Base):
     strength_score: Mapped[float] = mapped_column(Float, default=0.0)
     cluster_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     normalized_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    cluster_strength: Mapped[float] = mapped_column(Float, default=0.0)
+    cluster_strength: Mapped[float | None] = mapped_column(Float, nullable=True)
     merged_from_count: Mapped[int] = mapped_column(Integer, default=1)
     is_cluster_primary: Mapped[bool] = mapped_column(Boolean, default=True)
 

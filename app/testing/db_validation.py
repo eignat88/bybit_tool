@@ -7,6 +7,24 @@ from app.db.repository import engine
 from app.testing.models import CheckResult
 
 
+LEVELS_REQUIRED_COLUMNS = [
+    "cluster_id",
+    "normalized_price",
+    "cluster_strength",
+    "merged_from_count",
+    "is_cluster_primary",
+]
+
+
+def get_missing_levels_columns() -> list[str]:
+    inspector = inspect(engine)
+    if not inspector.has_table("levels"):
+        return LEVELS_REQUIRED_COLUMNS.copy()
+
+    columns = {c["name"] for c in inspector.get_columns("levels")}
+    return [name for name in LEVELS_REQUIRED_COLUMNS if name not in columns]
+
+
 def validate_db_schema() -> list[CheckResult]:
     inspector = inspect(engine)
     results: list[CheckResult] = []
