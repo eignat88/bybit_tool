@@ -16,6 +16,7 @@ from app.core.indicators import calculate_indicators
 from app.core.intervals import normalize_intervals
 from app.core.market_structure import build_market_structure, parse_timeframes_csv
 from app.core.scoring import MAX_ATR_PCT, MIN_ATR_PCT
+from app.core.trade_scenarios import build_trade_scenarios
 from app.db.models import AnalysisReport, Candle, IndicatorValue, Level, ScanResult, ScanRun
 
 
@@ -254,6 +255,17 @@ def find_nearest_levels(*, db: Session, symbol: str, market_type: str, intervals
         "nearest_resistance": _pack(nearest_resistance),
         "status": status,
     }
+
+
+def _extract_level_prices(*, db: Session, symbol: str, market_type: str, interval: str) -> tuple[list[float], list[float]]:
+    levels = list(
+        db.execute(
+            select(Level).where(Level.symbol == symbol, Level.market_type == market_type, Level.interval == interval)
+        ).scalars()
+    )
+    supports = sorted(float(l.level_price) for l in levels if l.level_type.lower() == "support")
+    resistances = sorted(float(l.level_price) for l in levels if l.level_type.lower() == "resistance")
+    return supports, resistances
 
 
 def build_scanner_summary(*, db: Session, symbol: str, primary_interval: str, market_type: str) -> dict[str, Any]:
@@ -555,6 +567,22 @@ def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, inte
         market_metrics=market_metrics,
     )
 
+    supports, resistances = _extract_level_prices(
+        db=db,
+        symbol=symbol,
+        market_type=market_type,
+        interval=nearest_levels["primary_interval"],
+    )
+    trade_scenarios = build_trade_scenarios(
+        current_price=nearest_levels.get("latest_close"),
+        nearest_support=(nearest_levels.get("nearest_support") or {}).get("level_price"),
+        nearest_resistance=(nearest_levels.get("nearest_resistance") or {}).get("level_price"),
+        support_levels=supports,
+        resistance_levels=resistances,
+        trend_context=(market_structure.get(nearest_levels["primary_interval"]) or {}).get("trend_regime"),
+        risk_context=risk_summary.get("overall_risk"),
+    )
+
     payload: dict[str, Any] = {
         "symbol": symbol,
         "market_type": market_type,
@@ -576,6 +604,7 @@ def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, inte
         "scanner_summary": scanner_summary,
         "risk_summary": risk_summary,
         "recommendation_basis": recommendation_basis,
+        "trade_scenarios": trade_scenarios,
     }
 
     report = AnalysisReport(symbol=symbol, timeframe_set=timeframe_set, report_json=payload)
