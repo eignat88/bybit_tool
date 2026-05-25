@@ -578,36 +578,14 @@ def context(
     interval_list, _ = normalize_intervals(intervals_value)
 
     with SessionLocal() as db:
-        report_rows = db.execute(
+        report = db.execute(
             select(AnalysisReport)
             .where(AnalysisReport.symbol == normalized_symbol)
             .where(AnalysisReport.market_type == normalized_market_type)
             .order_by(AnalysisReport.id.desc())
-        ).scalars().all()
-        report = next(
-            (
-                candidate
-                for candidate in report_rows
-                if _normalize_timeframes((candidate.report_json or {}).get("timeframes")) == tuple(interval_list)
-            ),
-            None,
-        )
+            .limit(1)
+        ).scalar_one_or_none()
         fallback_report_used = False
-        if report is None:
-            fallback_report_rows = db.execute(
-                select(AnalysisReport)
-                .where(AnalysisReport.symbol == normalized_symbol)
-                .order_by(AnalysisReport.id.desc())
-            ).scalars().all()
-            report = next(
-                (
-                    candidate
-                    for candidate in fallback_report_rows
-                    if _normalize_timeframes((candidate.report_json or {}).get("timeframes")) == tuple(interval_list)
-                ),
-                None,
-            )
-            fallback_report_used = report is not None
 
         scan = db.execute(
             select(ScanResult)
@@ -651,7 +629,15 @@ def context(
         if report is not None and isinstance(report.report_json, dict):
             rec_decision = RecommendationBuilder().build(report.report_json)
             rec_status = rec_decision.status
-            rec_reason = rec_decision.reason or "ok"
+            recommendation_basis = report.report_json.get("recommendation_basis") or {}
+            candidate_strategy = recommendation_basis.get("candidate_strategy")
+            blocking_factors = recommendation_basis.get("blocking_factors")
+            if candidate_strategy:
+                rec_reason = str(candidate_strategy)
+            elif blocking_factors:
+                rec_reason = "; ".join(str(item) for item in blocking_factors)
+            else:
+                rec_reason = rec_decision.reason or "ok"
 
         trade_scenarios = build_trade_scenarios(
             current_price=price,
