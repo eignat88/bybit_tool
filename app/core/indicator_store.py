@@ -126,6 +126,7 @@ class IndicatorStore:
                         existing = db.execute(
                             select(IndicatorValue).where(
                                 IndicatorValue.symbol == symbol,
+                                IndicatorValue.market_type == market_type,
                                 IndicatorValue.interval == interval,
                                 IndicatorValue.open_time == open_time,
                                 IndicatorValue.indicator_name == name,
@@ -136,6 +137,7 @@ class IndicatorStore:
                             db.add(
                                 IndicatorValue(
                                     symbol=symbol,
+                                    market_type=market_type,
                                     interval=interval,
                                     open_time=open_time,
                                     indicator_name=name,
