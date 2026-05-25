@@ -343,6 +343,9 @@ def levels(
         ).first()
     current_price = float(latest_candle[0]) if latest_candle else 0.0
 
+    def _round(value: float | None) -> float | None:
+        return None if value is None else round(float(value), 4)
+
     def _signed_pct(value: float | None) -> str:
         if value is None:
             return "n/a"
@@ -353,12 +356,12 @@ def levels(
         distance_abs = level_price - current_price
         distance_pct = (distance_abs / current_price * 100.0) if current_price else None
         return {
-            "level_price": level_price,
+            "level_price": _round(level_price),
             "level_type": str(level.level_type),
             "source_type": str(level.source_type),
-            "strength_score": float(level.strength_score),
-            "distance_abs": distance_abs,
-            "distance_pct": distance_pct,
+            "strength_score": _round(float(level.strength_score)),
+            "distance_abs": _round(distance_abs),
+            "distance_pct": _round(distance_pct),
         }
 
     enriched_levels = [_enrich(level) for level in result]
