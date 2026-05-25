@@ -19,8 +19,9 @@ from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
 from app.core.report_builder import build_analysis_report, find_nearest_levels
 from app.core.recommendation_builder import RecommendationBuilder, build_recommendation
+from app.core.trade_scenarios import build_trade_scenarios
 from app.core.domain_errors import AnalysisReportNotFoundError, DataNotFoundWarning, RecommendationInputError
-from app.db.models import Candle, Symbol
+from app.db.models import Candle, Symbol, Level
 from app.db.models import AnalysisReport, BotRecommendation, ScanResult
 from app.db.repository import SessionLocal, init_db, migrate_db
 
@@ -607,6 +608,19 @@ def context(
             db=db, symbol=normalized_symbol, market_type=normalized_market_type, intervals=interval_list
         )
 
+        primary_interval = nearest.get("primary_interval")
+        level_rows = []
+        if primary_interval:
+            level_rows = db.execute(
+                select(Level).where(
+                    Level.symbol == normalized_symbol,
+                    Level.market_type == normalized_market_type,
+                    Level.interval == primary_interval,
+                )
+            ).scalars().all()
+        supports = sorted(float(l.level_price) for l in level_rows if l.level_type.lower() == "support")
+        resistances = sorted(float(l.level_price) for l in level_rows if l.level_type.lower() == "resistance")
+
         market_structure = {}
         if report is not None and isinstance(report.report_json, dict):
             market_structure = report.report_json.get("market_structure") or {}
@@ -617,6 +631,18 @@ def context(
             rec_decision = RecommendationBuilder().build(report.report_json)
             rec_status = rec_decision.status
             rec_reason = rec_decision.reason or "ok"
+
+        trade_scenarios = build_trade_scenarios(
+            current_price=price,
+            nearest_support=(nearest.get("nearest_support") or {}).get("level_price"),
+            nearest_resistance=(nearest.get("nearest_resistance") or {}).get("level_price"),
+            support_levels=supports,
+            resistance_levels=resistances,
+            trend_context=(market_structure.get(str(nearest.get("primary_interval"))) or {}).get("trend_regime"),
+            risk_context=(report.report_json.get("risk_summary") or {}).get("overall_risk")
+            if report is not None and isinstance(report.report_json, dict)
+            else None,
+        )
 
     def _signed_pct(value: float | None) -> str:
         if value is None:
@@ -667,6 +693,17 @@ def context(
         )
         typer.echo(f"- RSI: {rsi if rsi is not None else 'n/a'}")
         typer.echo(f"- scanner_tier: {tier if tier else 'n/a'}")
+
+    typer.echo("Scenarios")
+    typer.echo(f"- status: {trade_scenarios.get('status')}")
+    typer.echo(
+        f"- long_breakout_trigger: {trade_scenarios.get('long_breakout', {}).get('trigger_price') if trade_scenarios.get('long_breakout') else 'n/a'}"
+    )
+    typer.echo(f"- buy_zone: {trade_scenarios.get('buy_zone')}")
+    typer.echo(
+        f"- invalidation: {(trade_scenarios.get('invalidation') or {}).get('trigger_price') if trade_scenarios.get('invalidation') else 'n/a'}"
+    )
+    typer.echo(f"- tp_zones: {trade_scenarios.get('tp_zones')}")
 
     typer.echo("Decision")
     typer.echo(f"- {rec_status}")
