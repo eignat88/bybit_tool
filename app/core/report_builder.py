@@ -470,6 +470,7 @@ def build_recommendation_basis(
     return {
         "eligible_for_recommendation": eligible,
         "candidate_strategy": candidate_strategy,
+        "confidence_score": confidence_seed,
         "confidence_seed": confidence_seed,
         "reasons": reasons,
         "blocking_factors": blocking_factors,

@@ -87,7 +87,7 @@ class RecommendationBuilder:
             return RecommendationResult(status="skip", reason="not_eligible")
 
         candidate_strategy = str(basis.get("candidate_strategy") or "grid")
-        confidence = float(basis.get("confidence_score", 0.0))
+        confidence = float(basis.get("confidence_score", basis.get("confidence_seed", 0.0)))
 
         actionable_strategies = {"grid", "range", "trend", "trend_follow"}
         if candidate_strategy in actionable_strategies and confidence < MIN_CONFIDENCE_TO_ACT:
@@ -200,7 +200,11 @@ def build_recommendation(
 
     indicators = db.execute(
         select(IndicatorValue)
-        .where(IndicatorValue.symbol == normalized_symbol, IndicatorValue.interval == interval)
+        .where(
+            IndicatorValue.symbol == normalized_symbol,
+            IndicatorValue.market_type == market_type,
+            IndicatorValue.interval == interval,
+        )
         .order_by(IndicatorValue.open_time.desc(), IndicatorValue.id.desc())
         .limit(50)
     ).scalars().all()

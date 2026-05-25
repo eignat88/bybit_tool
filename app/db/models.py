@@ -110,6 +110,7 @@ class IndicatorValue(Base):
     __table_args__ = (
         UniqueConstraint(
             "symbol",
+            "market_type",
             "interval",
             "open_time",
             "indicator_name",
@@ -121,6 +122,7 @@ class IndicatorValue(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(30), index=True)
+    market_type: Mapped[str] = mapped_column(String(20), nullable=False, default="linear", index=True)
     interval: Mapped[str] = mapped_column(String(10), index=True)
     open_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     indicator_name: Mapped[str] = mapped_column(String(64), index=True)
