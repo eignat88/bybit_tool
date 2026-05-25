@@ -568,7 +568,14 @@ def context(
 ) -> None:
     normalized_symbol = symbol.strip().upper()
     normalized_market_type = market_type.strip().lower()
-    interval_list, _ = normalize_intervals(intervals)
+
+    intervals_value: str | list[str] | tuple[str, ...]
+    if isinstance(intervals, str):
+        intervals_value = [item.strip() for item in intervals.split(",") if item.strip()]
+    else:
+        intervals_value = intervals
+
+    interval_list, _ = normalize_intervals(intervals_value)
 
     with SessionLocal() as db:
         report_rows = db.execute(
