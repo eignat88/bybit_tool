@@ -313,11 +313,119 @@ def levels(
     symbol: str,
     interval: str = "120",
     market_type: str = typer.Option(settings.default_market_type, "--market-type"),
+    show: bool = typer.Option(
+        False,
+        "--show",
+        help="Show full support/resistance lists (ignored by --nearest and --json).",
+    ),
+    nearest: bool = typer.Option(
+        False,
+        "--nearest",
+        help="Show only nearest support/resistance in text format (ignored by --json).",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Print JSON output (highest priority: --json > --nearest > --show > default).",
+    ),
     export_csv: str = typer.Option("", "--export-csv", help="Path to save TradingView CSV."),
 ) -> None:
     calc = LevelsCalculator()
-    result = calc.calculate(symbol=symbol, interval=interval, market_type=market_type)
-    typer.echo(f"Levels calculated: {len(result)} for {symbol.upper()} @ {interval} ({market_type})")
+    normalized_symbol = symbol.upper()
+    result = calc.calculate(symbol=normalized_symbol, interval=interval, market_type=market_type)
+
+    with SessionLocal() as db:
+        latest_candle = db.execute(
+            select(Candle.close)
+            .where(Candle.symbol == normalized_symbol, Candle.market_type == market_type, Candle.interval == interval)
+            .order_by(Candle.open_time.desc())
+            .limit(1)
+        ).first()
+    current_price = float(latest_candle[0]) if latest_candle else 0.0
+
+    def _signed_pct(value: float | None) -> str:
+        if value is None:
+            return "n/a"
+        return f"{value:+.2f}%"
+
+    def _enrich(level: object) -> dict[str, float | str | None]:
+        level_price = float(level.level_price)
+        distance_abs = level_price - current_price
+        distance_pct = (distance_abs / current_price * 100.0) if current_price else None
+        return {
+            "level_price": level_price,
+            "level_type": str(level.level_type),
+            "source_type": str(level.source_type),
+            "strength_score": float(level.strength_score),
+            "distance_abs": distance_abs,
+            "distance_pct": distance_pct,
+        }
+
+    enriched_levels = [_enrich(level) for level in result]
+
+    supports = sorted(
+        [lvl for lvl in enriched_levels if lvl["level_type"].lower() == "support" and lvl["level_price"] <= current_price],
+        key=lambda lvl: lvl["level_price"],
+        reverse=True,
+    )
+    resistances = sorted(
+        [lvl for lvl in enriched_levels if lvl["level_type"].lower() == "resistance" and lvl["level_price"] >= current_price],
+        key=lambda lvl: lvl["level_price"],
+    )
+    nearest_support = supports[0] if supports else None
+    nearest_resistance = resistances[0] if resistances else None
+
+    if json_output:
+        payload: dict[str, object] = {
+            "symbol": normalized_symbol,
+            "interval": interval,
+            "current_price": current_price,
+            "nearest_support": nearest_support,
+            "nearest_resistance": nearest_resistance,
+        }
+        if show:
+            payload["supports"] = supports
+            payload["resistances"] = resistances
+        typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    elif nearest:
+        nearest_support_price = f"{nearest_support['level_price']:.6f}" if nearest_support else "n/a"
+        nearest_resistance_price = f"{nearest_resistance['level_price']:.6f}" if nearest_resistance else "n/a"
+        typer.echo(
+            f"{normalized_symbol} @ {interval} ({market_type}) current_price={current_price:.6f} "
+            f"nearest_support={nearest_support_price} "
+            f"nearest_resistance={nearest_resistance_price}"
+        )
+        if nearest_support:
+            typer.echo(
+                f"  support: price={nearest_support['level_price']:.6f} "
+                f"distance={nearest_support['distance_abs']:+.6f} ({_signed_pct(nearest_support['distance_pct'])}) "
+                f"strength={nearest_support['strength_score']:.3f} source={nearest_support['source_type']}"
+            )
+        if nearest_resistance:
+            typer.echo(
+                f"  resistance: price={nearest_resistance['level_price']:.6f} "
+                f"distance={nearest_resistance['distance_abs']:+.6f} ({_signed_pct(nearest_resistance['distance_pct'])}) "
+                f"strength={nearest_resistance['strength_score']:.3f} source={nearest_resistance['source_type']}"
+            )
+    elif show:
+        typer.echo(f"Levels calculated: {len(result)} for {normalized_symbol} @ {interval} ({market_type})")
+        typer.echo(f"current_price={current_price:.6f}")
+        typer.echo("Support levels:")
+        for lvl in supports:
+            typer.echo(
+                f"  price={lvl['level_price']:.6f} distance={lvl['distance_abs']:+.6f} "
+                f"({_signed_pct(lvl['distance_pct'])}) strength={lvl['strength_score']:.3f} "
+                f"source={lvl['source_type']}"
+            )
+        typer.echo("Resistance levels:")
+        for lvl in resistances:
+            typer.echo(
+                f"  price={lvl['level_price']:.6f} distance={lvl['distance_abs']:+.6f} "
+                f"({_signed_pct(lvl['distance_pct'])}) strength={lvl['strength_score']:.3f} "
+                f"source={lvl['source_type']}"
+            )
+    else:
+        typer.echo(f"Levels calculated: {len(result)} for {normalized_symbol} @ {interval} ({market_type})")
 
     by_source: dict[str, int] = {}
     by_type: dict[str, int] = {}
