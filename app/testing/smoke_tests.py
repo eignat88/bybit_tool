@@ -4,8 +4,12 @@ import compileall
 import os
 
 from app.testing.cli_validation import (
+    validate_analyze_saves_report_json,
+    validate_bot_recommendations_growth,
     validate_cli_commands,
     validate_compact_error,
+    validate_db_check_ok,
+    validate_indicators_no_duplicates,
     validate_interval_consistency,
     validate_market_type_consistency,
 )
@@ -27,8 +31,12 @@ def run_self_test(*, quick: bool = False, write_artifacts: bool | None = None) -
     report.add(validate_duplicates())
     for result in validate_cli_commands():
         report.add(result)
+    report.add(validate_db_check_ok())
     report.add(validate_compact_error())
     report.add(validate_interval_consistency())
+    report.add(validate_indicators_no_duplicates())
+    report.add(validate_analyze_saves_report_json())
+    report.add(validate_bot_recommendations_growth())
     report.add(validate_scheduler_once())
     report.add(validate_market_type_consistency())
     if write_artifacts is None:
