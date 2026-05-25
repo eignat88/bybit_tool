@@ -17,6 +17,15 @@ LOGGER = logging.getLogger(__name__)
 
 _TIMEFRAME_TO_INTERVAL = {"15m": "15", "30m": "30", "1h": "60", "2h": "120", "4h": "240", "1d": "D"}
 _INTERVAL_TO_TIMEFRAME = {v: k for k, v in _TIMEFRAME_TO_INTERVAL.items()}
+_SPOT_EXCLUDED_SYMBOLS = {
+    "USDCUSDT",
+    "USDTUSDC",
+    "DAIUSDT",
+    "FDUSDUSDT",
+    "TUSDUSDT",
+    "USDEUSDT",
+    "USDDUSDT",
+}
 
 
 @dataclass(slots=True)
@@ -99,12 +108,12 @@ class SpotScreener:
 
     def _get_spot_symbols(self, *, auto_sync_symbols: bool) -> list[str]:
         stmt = select(Symbol.symbol).where(Symbol.market_type == "spot", Symbol.quote_coin == "USDT", Symbol.status.in_(["Trading", "TRADING", "tradable", "Tradable"]))
-        symbols = [s for (s,) in self.db.execute(stmt)]
+        symbols = [s for (s,) in self.db.execute(stmt) if s not in _SPOT_EXCLUDED_SYMBOLS]
         if symbols:
             return symbols
         if auto_sync_symbols:
             self.loader.sync_symbols(market_type="spot")
-            symbols = [s for (s,) in self.db.execute(stmt)]
+            symbols = [s for (s,) in self.db.execute(stmt) if s not in _SPOT_EXCLUDED_SYMBOLS]
         return symbols
 
 
