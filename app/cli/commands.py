@@ -580,11 +580,9 @@ def context(
     with SessionLocal() as db:
         report_rows = db.execute(
             select(AnalysisReport)
-            .where(
-                AnalysisReport.symbol == normalized_symbol,
-                AnalysisReport.report_json["market_type"].astext == normalized_market_type,
-            )
-            .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
+            .where(AnalysisReport.symbol == normalized_symbol)
+            .where(AnalysisReport.market_type == normalized_market_type)
+            .order_by(AnalysisReport.id.desc())
         ).scalars().all()
         report = next(
             (
@@ -594,6 +592,22 @@ def context(
             ),
             None,
         )
+        fallback_report_used = False
+        if report is None:
+            fallback_report_rows = db.execute(
+                select(AnalysisReport)
+                .where(AnalysisReport.symbol == normalized_symbol)
+                .order_by(AnalysisReport.id.desc())
+            ).scalars().all()
+            report = next(
+                (
+                    candidate
+                    for candidate in fallback_report_rows
+                    if _normalize_timeframes((candidate.report_json or {}).get("timeframes")) == tuple(interval_list)
+                ),
+                None,
+            )
+            fallback_report_used = report is not None
 
         scan = db.execute(
             select(ScanResult)
@@ -711,6 +725,10 @@ def context(
         f"- invalidation: {(trade_scenarios.get('invalidation') or {}).get('trigger_price') if trade_scenarios.get('invalidation') else 'n/a'}"
     )
     typer.echo(f"- tp_zones: {trade_scenarios.get('tp_zones')}")
+
+    if fallback_report_used:
+        typer.echo("Warning")
+        typer.echo("- fallback_report_used")
 
     typer.echo("Decision")
     typer.echo(f"- {rec_status}")

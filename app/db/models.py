@@ -100,6 +100,7 @@ class AnalysisReport(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     symbol: Mapped[str] = mapped_column(String(30), index=True)
+    market_type: Mapped[str] = mapped_column(String(32), nullable=False, default="linear", index=True)
     timeframe_set: Mapped[str] = mapped_column(String(64))
     report_json: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

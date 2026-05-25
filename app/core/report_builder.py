@@ -607,7 +607,7 @@ def build_analysis_report(*, db: Session, client: BybitClient, symbol: str, inte
         "trade_scenarios": trade_scenarios,
     }
 
-    report = AnalysisReport(symbol=symbol, timeframe_set=timeframe_set, report_json=payload)
+    report = AnalysisReport(symbol=symbol, market_type=market_type, timeframe_set=timeframe_set, report_json=payload)
     db.add(report)
     db.commit()
     db.refresh(report)
