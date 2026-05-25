@@ -97,10 +97,18 @@ def load_all(
     typer.echo(f"load_all_elapsed_time_sec={elapsed:.2f}")
 
 
-def run_load(symbols: str, intervals: str, market_type: str) -> None:
+def _prepare_intervals(intervals: str | list[str] | tuple[str, ...]) -> list[str]:
+    if isinstance(intervals, str):
+        return [item.strip() for item in intervals.split(",") if item.strip()]
+    if isinstance(intervals, (list, tuple)):
+        return [str(item).strip() for item in intervals if str(item).strip()]
+    return []
+
+
+def run_load(symbols: str, intervals: str | list[str] | tuple[str, ...], market_type: str) -> None:
     started = time.perf_counter()
     try:
-        interval_list, _ = normalize_intervals(intervals)
+        interval_list, _ = normalize_intervals(_prepare_intervals(intervals))
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
