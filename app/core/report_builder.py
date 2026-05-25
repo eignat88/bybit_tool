@@ -232,11 +232,12 @@ def find_nearest_levels(*, db: Session, symbol: str, market_type: str, intervals
     def _pack(level: Level | None) -> dict[str, Any] | None:
         if level is None:
             return None
-        distance_abs = abs(latest_close - float(level.level_price))
-        distance_pct = (distance_abs / latest_close * 100.0) if latest_close else None
+        level_price = float(level.level_price)
+        signed_abs = level_price - latest_close
+        distance_pct = (signed_abs / latest_close * 100.0) if latest_close != 0 else None
         return {
-            "level_price": _round(level.level_price),
-            "distance_abs": _round(distance_abs),
+            "level_price": _round(level_price),
+            "distance_abs": _round(signed_abs),
             "distance_pct": _round(distance_pct),
             "source_type": level.source_type,
             "strength_score": _round(level.strength_score),
