@@ -24,6 +24,14 @@ def upgrade() -> None:
         op.alter_column("indicator_values", "market_type", server_default=None)
 
     indexes = {idx.get("name") for idx in inspector.get_indexes("indicator_values")}
+    if "ix_indicator_values_symbol_interval_open_time" in indexes:
+        op.drop_index("ix_indicator_values_symbol_interval_open_time", table_name="indicator_values")
+    if "ix_indicator_values_symbol_market_interval_time" not in indexes:
+        op.create_index(
+            "ix_indicator_values_symbol_market_interval_time",
+            "indicator_values",
+            ["symbol", "market_type", "interval", "open_time"],
+        )
     if "ix_indicator_values_market_type" not in indexes:
         op.create_index("ix_indicator_values_market_type", "indicator_values", ["market_type"])
 
@@ -64,6 +72,14 @@ def downgrade() -> None:
         )
 
     indexes = {idx.get("name") for idx in inspector.get_indexes("indicator_values")}
+    if "ix_indicator_values_symbol_market_interval_time" in indexes:
+        op.drop_index("ix_indicator_values_symbol_market_interval_time", table_name="indicator_values")
+    if "ix_indicator_values_symbol_interval_open_time" not in indexes:
+        op.create_index(
+            "ix_indicator_values_symbol_interval_open_time",
+            "indicator_values",
+            ["symbol", "interval", "open_time"],
+        )
     if "ix_indicator_values_market_type" in indexes:
         op.drop_index("ix_indicator_values_market_type", table_name="indicator_values")
 
