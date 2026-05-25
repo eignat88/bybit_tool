@@ -17,11 +17,11 @@ from app.core.intervals import normalize_intervals, validate_intervals_csv
 from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
-from app.core.report_builder import build_analysis_report
+from app.core.report_builder import build_analysis_report, find_nearest_levels
 from app.core.recommendation_builder import RecommendationBuilder, build_recommendation
 from app.core.domain_errors import AnalysisReportNotFoundError, DataNotFoundWarning, RecommendationInputError
 from app.db.models import Candle, Symbol
-from app.db.models import AnalysisReport, BotRecommendation
+from app.db.models import AnalysisReport, BotRecommendation, ScanResult
 from app.db.repository import SessionLocal, init_db, migrate_db
 
 from app.testing.db_validation import get_missing_levels_columns, validate_db_objects
@@ -32,6 +32,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 LOGGER = logging.getLogger(__name__)
 
 app = typer.Typer(help="Bybit Market Decision System CLI")
+
+
+def _normalize_timeframes(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        raw = [item.strip().upper() for item in value.split(",") if item.strip()]
+    elif isinstance(value, list):
+        raw = [str(item).strip().upper() for item in value if str(item).strip()]
+    else:
+        raw = []
+    return tuple(sorted(set(raw)))
 
 
 @app.command("init-db")
@@ -547,6 +557,121 @@ def recommend(
     typer.echo(f"symbol={rec.symbol}")
     typer.echo(f"strategy_type={rec.strategy_type}")
     typer.echo(f"confidence={rec.confidence:.2f}")
+
+
+@app.command("context")
+def context(
+    symbol: str,
+    intervals: str = typer.Option("D,240,60", "--intervals"),
+    market_type: str = typer.Option(settings.default_market_type, "--market-type"),
+) -> None:
+    normalized_symbol = symbol.strip().upper()
+    normalized_market_type = market_type.strip().lower()
+    interval_list, _ = normalize_intervals(intervals)
+
+    with SessionLocal() as db:
+        report_rows = db.execute(
+            select(AnalysisReport)
+            .where(
+                AnalysisReport.symbol == normalized_symbol,
+                AnalysisReport.report_json["market_type"].astext == normalized_market_type,
+            )
+            .order_by(AnalysisReport.created_at.desc(), AnalysisReport.id.desc())
+        ).scalars().all()
+        report = next(
+            (
+                candidate
+                for candidate in report_rows
+                if _normalize_timeframes((candidate.report_json or {}).get("timeframes")) == tuple(interval_list)
+            ),
+            None,
+        )
+
+        scan = db.execute(
+            select(ScanResult)
+            .where(ScanResult.symbol == normalized_symbol)
+            .order_by(ScanResult.id.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        price = float(scan.price) if scan is not None and scan.price is not None else None
+        if price is None:
+            candle = db.execute(
+                select(Candle)
+                .where(Candle.symbol == normalized_symbol, Candle.market_type == normalized_market_type)
+                .order_by(Candle.open_time.desc(), Candle.id.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            price = float(candle.close) if candle is not None else None
+
+        nearest = find_nearest_levels(
+            db=db, symbol=normalized_symbol, market_type=normalized_market_type, intervals=interval_list
+        )
+
+        market_structure = {}
+        if report is not None and isinstance(report.report_json, dict):
+            market_structure = report.report_json.get("market_structure") or {}
+
+        rec_status = "insufficient_data"
+        rec_reason = "analysis_report_missing"
+        if report is not None and isinstance(report.report_json, dict):
+            rec_decision = RecommendationBuilder().build(report.report_json)
+            rec_status = rec_decision.status
+            rec_reason = rec_decision.reason or "ok"
+
+    def _signed_pct(value: float | None) -> str:
+        if value is None:
+            return "n/a"
+        return f"{value:+.2f}%"
+
+    typer.echo("Symbol/Price")
+    if price is None:
+        typer.echo(
+            f"- {normalized_symbol} ({normalized_market_type}) price=n/a status=insufficient_data reason=no_price_available"
+        )
+    else:
+        typer.echo(f"- {normalized_symbol} ({normalized_market_type}) price={price:.6f}")
+
+    typer.echo("Trend")
+    for tf in interval_list:
+        trend_regime = (market_structure.get(str(tf)) or {}).get("trend_regime")
+        trend_status = trend_regime or "insufficient_data"
+        typer.echo(f"- {tf}: {trend_status}")
+
+    typer.echo("Nearest levels")
+    support = nearest.get("nearest_support")
+    resistance = nearest.get("nearest_resistance")
+    if support is None and resistance is None:
+        typer.echo("- status=insufficient_data reason=no_levels_found_for_primary_interval")
+    else:
+        if support is None:
+            typer.echo("- support: insufficient_data")
+        else:
+            typer.echo(f"- support: {support['level_price']:.6f} ({_signed_pct(support.get('distance_pct'))})")
+        if resistance is None:
+            typer.echo("- resistance: insufficient_data")
+        else:
+            typer.echo(f"- resistance: {resistance['level_price']:.6f} ({_signed_pct(resistance.get('distance_pct'))})")
+
+    typer.echo("Risk")
+    if scan is None:
+        typer.echo("- overall: insufficient_data")
+        typer.echo("- RSI: insufficient_data")
+        typer.echo("- scanner_tier: insufficient_data")
+    else:
+        atr_pct = getattr(scan, "atr_pct", None)
+        adx = getattr(scan, "adx", None)
+        rsi = getattr(scan, "rsi", None)
+        tier = getattr(scan, "tier", None)
+        typer.echo(
+            f"- overall: atr_pct={atr_pct if atr_pct is not None else 'n/a'} adx={adx if adx is not None else 'n/a'}"
+        )
+        typer.echo(f"- RSI: {rsi if rsi is not None else 'n/a'}")
+        typer.echo(f"- scanner_tier: {tier if tier else 'n/a'}")
+
+    typer.echo("Decision")
+    typer.echo(f"- {rec_status}")
+    typer.echo("Reason")
+    typer.echo(f"- {rec_reason}")
 
 
 @app.command("db-check")
