@@ -4,6 +4,35 @@ from dataclasses import dataclass
 from math import sqrt
 
 
+
+
+@dataclass
+class BollingerBands:
+    mid: float
+    upper: float
+    lower: float
+    bandwidth: float
+    percent_b: float | None
+
+
+def calculate_rsi(closes: list[float], period: int = 14) -> float:
+    return _rsi(closes, period=period)
+
+
+def calculate_bollinger_bands(closes: list[float], period: int = 20, mult: float = 2.0) -> BollingerBands:
+    if len(closes) < period:
+        raise ValueError("Insufficient candles for Bollinger Bands")
+    window = closes[-period:]
+    mid = _sma(window)
+    stdev = _std(window)
+    upper = mid + (mult * stdev)
+    lower = mid - (mult * stdev)
+    bandwidth = ((upper - lower) / mid) * 100.0 if mid else 0.0
+    spread = upper - lower
+    percent_b = None if spread == 0 else (closes[-1] - lower) / spread
+    return BollingerBands(mid=mid, upper=upper, lower=lower, bandwidth=bandwidth, percent_b=percent_b)
+
+
 @dataclass
 class IndicatorSet:
     atr_pct: float
@@ -38,7 +67,7 @@ def calculate_indicators(
         raise ValueError("No candles provided")
 
     atr = _atr(highs, lows, closes, period=atr_period)
-    rsi = _rsi(closes, period=rsi_period)
+    rsi = calculate_rsi(closes, period=rsi_period)
     adx = _adx(highs, lows, closes, period=adx_period)
     vwap_deviation_pct = _vwap_deviation_pct(closes, volumes)
     bb_width_pct = _bb_width_pct(closes, period=bb_period)
