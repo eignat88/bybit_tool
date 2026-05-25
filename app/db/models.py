@@ -117,7 +117,7 @@ class IndicatorValue(Base):
             "calc_version",
             name="uq_indicator_values_key",
         ),
-        Index("ix_indicator_values_symbol_interval_open_time", "symbol", "interval", "open_time"),
+        Index("ix_indicator_values_symbol_market_interval_time", "symbol", "market_type", "interval", "open_time"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
