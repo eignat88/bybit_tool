@@ -113,3 +113,53 @@ def test_context_fallbacks_with_incomplete_data(monkeypatch):
     assert "- overall: insufficient_data" in result.stdout
     assert "- insufficient_data" in result.stdout
     assert "- analysis_report_missing" in result.stdout
+
+
+def test_context_default_intervals_are_split_before_normalize(monkeypatch):
+    fake_session = _FakeSession(report_rows=[], scan=None, candle=None, levels=[])
+    monkeypatch.setattr("app.cli.commands.SessionLocal", lambda: fake_session)
+
+    captured = {}
+
+    def _fake_normalize(value):
+        captured["value"] = value
+        return (["D", "240", "60"], "D,240,60")
+
+    monkeypatch.setattr("app.cli.commands.normalize_intervals", _fake_normalize)
+    monkeypatch.setattr(
+        "app.cli.commands.find_nearest_levels",
+        lambda **_kwargs: {"primary_interval": "60", "nearest_support": None, "nearest_resistance": None},
+    )
+    monkeypatch.setattr(
+        "app.cli.commands.build_trade_scenarios",
+        lambda **_kwargs: {"status": "insufficient_data", "buy_zone": None, "tp_zones": []},
+    )
+
+    result = CliRunner().invoke(app, ["context", "BTCUSDT", "--market-type", "linear"])
+    assert result.exit_code == 0
+    assert captured["value"] == ["D", "240", "60"]
+
+
+def test_context_cli_intervals_csv_are_split_before_normalize(monkeypatch):
+    fake_session = _FakeSession(report_rows=[], scan=None, candle=None, levels=[])
+    monkeypatch.setattr("app.cli.commands.SessionLocal", lambda: fake_session)
+
+    captured = {}
+
+    def _fake_normalize(value):
+        captured["value"] = value
+        return (["240", "60"], "240,60")
+
+    monkeypatch.setattr("app.cli.commands.normalize_intervals", _fake_normalize)
+    monkeypatch.setattr(
+        "app.cli.commands.find_nearest_levels",
+        lambda **_kwargs: {"primary_interval": "60", "nearest_support": None, "nearest_resistance": None},
+    )
+    monkeypatch.setattr(
+        "app.cli.commands.build_trade_scenarios",
+        lambda **_kwargs: {"status": "insufficient_data", "buy_zone": None, "tp_zones": []},
+    )
+
+    result = CliRunner().invoke(app, ["context", "BTCUSDT", "--intervals", "240,60", "--market-type", "linear"])
+    assert result.exit_code == 0
+    assert captured["value"] == ["240", "60"]
