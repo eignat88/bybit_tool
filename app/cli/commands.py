@@ -17,6 +17,8 @@ from app.core.intervals import normalize_intervals, validate_intervals_csv
 from app.core.scheduler_runner import get_scheduler_intervals
 from app.core.market_loader import MarketLoader
 from app.core.value_scanner import ValueScanner
+from app.core.spot_screener import SpotScreener
+from app.core.spot_scan_export import export_spot_scan_csv, export_spot_scan_xlsx
 from app.core.report_builder import build_analysis_report, find_nearest_levels
 from app.core.recommendation_builder import RecommendationBuilder, build_recommendation
 from app.core.trade_scenarios import build_trade_scenarios
@@ -279,6 +281,62 @@ def scan(
             f"atr%={row.atr_pct:.2f} rsi={row.rsi:.2f} adx={row.adx:.2f} "
             f"vwap_dev%={row.vwap_deviation_pct:.2f} bb_width%={row.bb_width_pct:.2f}"
         )
+
+
+
+
+@app.command("spot-scan")
+def spot_scan(
+    timeframe: str = typer.Option("2h", "--timeframe", "--interval"),
+    limit: int = typer.Option(200, "--limit"),
+    bb_period: int = typer.Option(20, "--bb-period"),
+    bb_mult: float = typer.Option(2.0, "--bb-mult"),
+    rsi_period: int = typer.Option(14, "--rsi-period"),
+    max_symbols: int = typer.Option(0, "--max-symbols"),
+    csv_path: str = typer.Option("", "--csv"),
+    xlsx_path: str = typer.Option("", "--xlsx"),
+    auto_sync_symbols: bool = typer.Option(True, "--auto-sync-symbols/--no-auto-sync-symbols"),
+) -> None:
+    with SessionLocal() as db:
+        loader = MarketLoader(client=BybitClient(), db=db)
+        screener = SpotScreener(db=db, loader=loader)
+        rows, summary = screener.scan(
+            timeframe=timeframe,
+            limit=limit,
+            bb_period=bb_period,
+            bb_mult=bb_mult,
+            rsi_period=rsi_period,
+            max_symbols=max_symbols,
+            auto_sync_symbols=auto_sync_symbols,
+        )
+
+    if not rows:
+        typer.echo("No SPOT symbols found. Run:\npython main.py sync-symbols --market-type spot")
+        raise typer.Exit(code=1)
+
+    for row in rows:
+        typer.echo(
+            f"{row.symbol:<12} {row.close:>12.6f} {row.rsi:>6.2f} {row.volume_24h:>12.2f} "
+            f"{(row.bb_percent_b if row.bb_percent_b is not None else 0):>6.2f} "
+            f"{(row.bb_bandwidth if row.bb_bandwidth is not None else 0):>8.2f} {row.signal_type}"
+        )
+
+    tf_name = timeframe.lower()
+    csv_out = Path(csv_path) if csv_path else Path("exports") / f"scan_spot_{tf_name}.csv"
+    xlsx_out = Path(xlsx_path) if xlsx_path else Path("exports") / f"scan_spot_{tf_name}.xlsx"
+    export_spot_scan_csv(rows, csv_out)
+    export_spot_scan_xlsx(rows, xlsx_out)
+
+    typer.echo(f"symbols_total={summary.symbols_total}")
+    typer.echo(f"symbols_processed={summary.symbols_processed}")
+    typer.echo(f"symbols_skipped={summary.symbols_skipped}")
+    typer.echo(f"long_signals={sum(1 for r in rows if r.long_signal)}")
+    typer.echo(f"short_signals={sum(1 for r in rows if r.short_signal)}")
+    typer.echo(f"trend_up={sum(1 for r in rows if r.trend_up)}")
+    typer.echo(f"trend_down={sum(1 for r in rows if r.trend_down)}")
+    typer.echo(f"elapsed_time_sec={summary.elapsed_time_sec:.2f}")
+    typer.echo(f"csv_saved={csv_out}")
+    typer.echo(f"xlsx_saved={xlsx_out}")
 
 
 @app.command("indicators")
