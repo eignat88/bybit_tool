@@ -89,7 +89,7 @@ def load_all(
 def run_load(symbols: str, intervals: str, market_type: str) -> None:
     started = time.perf_counter()
     try:
-        interval_list = validate_intervals_csv(intervals)
+        interval_list, _ = normalize_intervals(intervals)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -413,7 +413,7 @@ def recommend(
     market_type: str = typer.Option(settings.default_market_type, "--market-type"),
 ) -> None:
     normalized_symbol = symbol.upper()
-    interval_list = validate_intervals_csv(intervals)
+    interval_list, _ = normalize_intervals(intervals)
     try:
         with SessionLocal() as db:
             rec = build_recommendation(
